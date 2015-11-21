@@ -15,10 +15,11 @@
 <body>
 	<script type="text/javascript" src="script/three.min.js"></script>
 	<script type="text/javascript" src="script/OrbitControls.js"></script>
+	<script type="text/javascript" src="script/stats.min.js"></script>
 	<script type="text/javascript" src="script/STLLoader.js"></script>
 	<script type="text/javascript" src="script/cannon.min.js"></script>
 	<script type="text/javascript" src="script/CannonDebugRenderer.js"></script>
-	<script type="text/javascript" src="script/ShowVectors.js"></script>
+	<script type="text/javascript" src="script/showVectors.js"></script>
 	<script type="text/javascript" src="script/controls.js"></script>
 
 	<!-- variables shared with scad/stl -->
@@ -32,18 +33,68 @@
 
 	<script type="text/javascript">
 
-		var helpDisplayVisible, helpButton, helpTextBox;
-		var restartAnimationButtonLoaded;
+		var trackPathPoints = [], currentTrackPathPoint;
+		var currentTrackPathPointBody;
+		var trackPathCurrentPoint = new THREE.Vector3(), trackPathNextPoint = new THREE.Vector3();
+		var trackPathCurrentDirection = new THREE.Vector3(), trackPathNextDirection = new THREE.Vector3();
+		var trackPathCurrentDisplacement = new THREE.Vector3();
+		var trackPathPointsPerSection = 20;
+		var trackPathPointVisibleRadius = 15;
+		var trackPathPointPhysicalRadius = 0.01;
 
-		var visibleAxes, visibleAxesVisible = true;
+		var animationPaused;
+
+		var panelBarWidth = 290, panelBarHeight = 45, panelBarHorizontalMargin = 5, panelBarVerticalMargin = 5;
+		var panelCloseButtonWidth = ( ( panelBarWidth / 3 ) | 0 ), panelCloseButtonHeight = ( ( panelBarHeight / 3 ) | 0 );
+		var panelWidth = ( ( panelBarWidth + ( 2 * panelBarHorizontalMargin ) ) | 0 );
+		var panelHorizontalMargin = 5, panelVerticalMargin = 5;
+		var panelOpacity = 0.3, panelBackgroundColor = "#222";
+		var panelBorderStyle = "solid", panelBorderWidth = 3, panelBorderColor = "#C00", panelBorderRadius = "15px";
+		var panelTitleOpacity = 0.9, panelTitleBackgroundColor = "#440", panelTitleTextColor = "#FF0";
+		var panelTitlePresentColor = "LightYellow";
+		var panelTitleBorderStyle = "solid", panelTitleBorderWidth = 3, panelTitleBorderColor = "#0CC", panelTitleBorderRadius = "10px";
+		var panelTitleFontSize = "23px";
+		var panelSelectOpacity = 0.9, panelSelectBackgroundColor = "#448", panelSelectTextColor = "#0CC";
+		var panelSelectChoiceColor = "Orange";
+		var panelSelectBorderStyle = "solid", panelSelectBorderWidth = 3, panelSelectBorderColor = "#8CC", panelSelectBorderRadius = "10px";
+		var panelSelectFontSize = "15px";
+		var pointOfViewPanelHeight = ( ( ( 6 * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
+		var shovelPanelHeight = ( ( ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
+		var pointOfViewPanelDiv, pointOfViewButton, pointOfViewButtonLoaded;
+		var pointOfViewTitleDiv;
+		var pointOfViewSelectArialDiv;
+		var pointOfViewSelectFollowDiv;
+		var pointOfViewSelectOrbitDiv;
+		var pointOfViewSelectRobotDiv;
+		var pointOfViewSelectTrackDiv;
+		var pointOfViewClosePanelButton;
+		var pointOfViewPanelIsOpen = false;
+
+		var shovelPanelDiv, shovelButton, shovelButtonLoaded;
+		var shovelToggleCannonDiv;
+		var shovelToggleAxesDiv;
+		var shovelCloseButtonDiv;
+		var shovelPanelIsOpen = false;
+
+		var restartAnimationButton, restartAnimationButtonLoaded;
+
+		var upDownLeftRightButton, upDownLeftRightButtonLoaded;
+		var upDownLeftRightButtonMaxLeftRightChange = 0.5, upDownLeftRightButtonMaxUpDownChange = 0.5;
+		var inOutButtonMaxInOutChange = 0.5;
+
+		var inOutButton, inOutButtonLoaded;
+
+		var visibleAxes, visibleAxesVisible;
+		var cannonAxes, cannonAxesVisible;
 		var visibleCameraVector;
 
 		var frameCount = 0, slowMotion = false, outlineBodies = false;
 
 		var camera, renderer, scene, xLight, yLight, zLight;
 		var orbitControls;
-		var cameraLookingAtVector = new THREE.Vector3(), cameraMoveVector = new THREE.Vector3(), cameraFollowDisplacement = new THREE.Vector3();
-		var cameraPositioningMode, cameraTetherLength;
+		var cameraLookingAtVector = new THREE.Vector3(), cameraMoveVector = new THREE.Vector3();
+		var cameraFollowDisplacement = new THREE.Vector3(), cameraRobotDisplacement = new THREE.Vector3();
+		var cameraPositioningMode, cameraTetherLength, cameraForwardViewDistance;
 
 		var world, timeStep = 1/60, caDebugOutliner;
 
@@ -52,43 +103,375 @@
 
 		var groundPlaneMesh, groundPlaneBody, groundPlaneGeometry, groundPlaneShape, groundPlaneMaterial;
 
-		var horizonDistance = 5000;
+		var horizonDistance = 10000;
 
 
 		var wallHalfHeight = trackWidth;
 		var wallHalfThickness = trackThickness;
 
-		var vehicleBody, vehicleMesh;
+		var robotBody, robotMesh;
+
+		var stats;
 
 		init();
 
-		function init() {
-			helpButton = new imageButton( "image/QuestionMark.png", "rendererDomElement", 0.01, 0.01, 0.05, 0.05, " ", false, onHelpButtonClick );
-			var helpText = "Help Display<br><br>\
-			C key: toggle cannon debug outlining<br>\
-			H key: toggle help display<br>\
-			R key: reset the animation<br>\
-			M key: toggle slow motion<br>\
-			X key: toggle visible axes<br>\
-			<br>\
-			F key: camera to 'Follow' mode<br>\
-			O key: camera to 'Orbit control' mode<br>\
-			T key: camera to 'Track' mode<br>\
-			V key: camera to 'aerial View' mode<br>\
-			- in Follow and Aerial:<br>\
-			--- W/A/S/D keys move camera laterally<br>\
-			--- +/- keys move camera in/out<br>\
-			";
-			helpTextBox = new textBox( helpText, "rendererDomElement", 0.01, 0.01, 0.25, 0.5, "#FFFF00", 1.5, "#000000", 1, "#00FF00" );
-			helpTextBox.visible.addEventListener( "mousedown", onHelpTextClick, false );
-			helpTextBox.visible.addEventListener( "touchstart", onHelpTextClick, false );
-			helpDisplayVisible = undefined;
-			// helpButton.activate() is called in animation routine AFTER image has loaded and button is no longer undefined...
+		function makeTrackPathPoint( pointLocation ) {
+			var newPointLocation = new THREE.Vector3();
+			newPointLocation.copy( pointLocation );
+			var newVisiblePointMesh = new THREE.Mesh( new THREE.SphereGeometry( trackPathPointVisibleRadius ), new THREE.MeshLambertMaterial( { color: 0xff0000 } ) );
+			newVisiblePointMesh.position.copy( pointLocation );
+			scene.add( newVisiblePointMesh );
+			var newTrackPathPoint = {
+				location: newPointLocation,
+				visible: true,
+				mesh: newVisiblePointMesh
+			}
+			trackPathPoints.push( newTrackPathPoint );
+		}
+		function turnOnAllVisiblePoints() {
+			for( var i = 0; i < trackPathPoints.length; i++ ) {
+				if( !trackPathPoints[ i ].visible ) {
+					trackPathPoints[ i ].visible = true;
+					scene.add( trackPathPoints[ i ].mesh );
+				}
+			}
+		}
+		function turnOffAllVisiblePoints() {
+			for( var i = 0; i < trackPathPoints.length; i++ ) {
+				if( trackPathPoints[ i ].visible ) {
+					trackPathPoints[ i ].visible = false;
+					scene.remove( trackPathPoints[ i ].mesh );
+				}
+			}
+		}
+		function turnOnVisibleTrackPathPoint( index ) {
+			if( !trackPathPoints[ index ].visible ) {
+				trackPathPoints[ index ].visible = true;
+				scene.add( trackPathPoints[ index ].mesh );
+			}
+		}
+		function turnOffVisibleTrackPathPoint( index ) {
+			if( trackPathPoints[ index ].visible ) {
+				trackPathPoints[ index ].visible = false;
+				scene.remove( trackPathPoints[ index ].mesh );
+			}
+		}
 
-			restartAnimationButton = new imageButton( "image/restartAnimationArrow.png", "rendererDomElement", 0.01, 0.06, 0.05, 0.05, " ", false, restartAnimation );
-			restartAnimationButtonLoaded = false;
+		function addTrackPathOrigin( location, direction ) {
+			trackPathCurrentPoint.copy( location );
+			makeTrackPathPoint( location );
+			trackPathCurrentDirection.copy( direction );
+		}
+		function addStraightTrackPathSection( sectionLength, sectionRise ) {
+			var incrementalLength = sectionLength / trackPathPointsPerSection;
+			var incrementalRise = sectionRise / trackPathPointsPerSection;
+			trackPathCurrentDisplacement.copy( trackPathCurrentDirection );
+			trackPathCurrentDisplacement.normalize().multiplyScalar( incrementalLength );
+			trackPathCurrentDisplacement.y += incrementalRise;
+			for( var i = 0; i < trackPathPointsPerSection; i++ ) {
+				trackPathNextPoint.addVectors( trackPathCurrentPoint, trackPathCurrentDisplacement );
+				makeTrackPathPoint( trackPathNextPoint );
+				trackPathCurrentPoint.copy( trackPathNextPoint );
+			}
+		}
+		function addCurveTrackPathSection( sectionRadius, sectionAngle, sectionRise ) {
+			var incrementalRise = sectionRise / trackPathPointsPerSection;
+			var incrementalAngle = sectionAngle / trackPathPointsPerSection;
+			var incrementalDistance = sectionRadius * Math.sin( ( incrementalAngle / 2 ) ) * 2;
+			for( var i = 0; i < trackPathPointsPerSection; i++ ) {
+				trackPathNextDirection.copy( trackPathCurrentDirection );
+				trackPathNextDirection.normalize();
+				if( i == 0 ) {
+					// the first incremental direction change is only half the angle of the remaining increments
+					trackPathNextDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), ( incrementalAngle / 2 ) );
+				} else {
+					trackPathNextDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), incrementalAngle );
+				}
+				trackPathCurrentDisplacement.copy( trackPathNextDirection );
+				trackPathCurrentDisplacement.multiplyScalar( incrementalDistance );
+				trackPathCurrentDisplacement.y += incrementalRise;
+				trackPathNextPoint.addVectors( trackPathCurrentPoint, trackPathCurrentDisplacement );
+				makeTrackPathPoint( trackPathNextPoint );
+				trackPathCurrentDirection.copy( trackPathNextDirection );
+				trackPathCurrentPoint.copy( trackPathNextPoint );
+			}
+			// now, after all the increments have been processed, add the remaining half-angle to finish the "current direction" being handed off to the next section
+			trackPathCurrentDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), ( incrementalAngle / 2 ) );
+		}
+
+		function init() {
 
 			scene = new THREE.Scene();
+
+			world = new CANNON.World();
+			world.gravity.set( 0, -9.8, 0 );
+			world.broadphase = new CANNON.NaiveBroadphase();
+
+			// currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
+			currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
+			currentTrackPathPointBody.addShape( new CANNON.Sphere( trackPathPointPhysicalRadius ) );
+			world.addBody( currentTrackPathPointBody );
+			// Make the array of point-locating-vectors that define the path of the track
+			// The track is an oval with straight sides of length 1,000 and curves with inner radius of 500
+			// The oval is centered at 0, 0, 0 with Y = 0 being at the elevation of the track driving surface
+			// The width of the track is 200
+			// +X is increasing to the right, +Y is increasing in the up direction and +Z is increasing in the "closer" direction
+			// - We're defining the track path as the centerline of the driving surface going around the oval, so:
+			// - - an origin at -500, 0, 600
+			// - - one straight section from 0, 0, 0 heading in the +X direction for a distance of 1,000
+			// - - one curve with a radius of 600 and an angular extent of 180 degrees (i.e. PI) (+ve angular extent is a curve heading "counter-clockwise" seen from above
+			// - - a second straight section heading in the -X direction for a distance of 1,000
+			// - - a second curve with the same radius and angular extent to bring us back to the origin
+			// - - the entire oval track is level and on the ground
+			// = = = redefining the track as a path:
+			var trackPathOriginPoint = new THREE.Vector3( -500, 0, 600 );
+			var trackPathStartingDirection = new THREE.Vector3( 1, 0, 0 );
+			var sectionOneLength = 1000, sectionOneRise = 0;
+			var sectionTwoRadius = 600, sectionTwoAngle = Math.PI, sectionTwoRise = 0;
+			var sectionThreeLength = 1000, sectionThreeRise = 0;
+			var sectionFourRadius = 600, sectionFourAngle = Math.PI, sectionFourRise = 0;
+			// ... the origin point
+			addTrackPathOrigin( trackPathOriginPoint, trackPathStartingDirection );
+			// ... the first straight section
+			addStraightTrackPathSection( sectionOneLength, sectionOneRise );
+			// ... the first curve
+			addCurveTrackPathSection( sectionTwoRadius, sectionTwoAngle, sectionTwoRise );
+			// ... the second straight section
+			addStraightTrackPathSection( sectionThreeLength, sectionThreeRise );
+			// ... the second curve
+			addCurveTrackPathSection( sectionFourRadius, sectionFourAngle, sectionFourRise );
+
+			turnOffAllVisiblePoints();
+			currentTrackPathPoint = 0;
+
+			pointOfViewPanelDiv = document.createElement( "div" );
+			pointOfViewPanelDiv.style.cssText = "position:absolute;display:none";
+			pointOfViewPanelDiv.style.left = "0" + ( panelHorizontalMargin | 0 ) + "px";
+			pointOfViewPanelDiv.style.top = "0" + ( panelVerticalMargin | 0 ) + "px";
+			pointOfViewPanelDiv.style.width = "0" + ( panelWidth | 0 ) + "px";
+			pointOfViewPanelDiv.style.height = "0" + ( pointOfViewPanelHeight | 0 ) + "px";
+			pointOfViewPanelDiv.style.backgroundColor = panelBackgroundColor;
+			pointOfViewPanelDiv.style.opacity = panelOpacity;
+			pointOfViewPanelDiv.style.borderStyle = panelBorderStyle;
+			pointOfViewPanelDiv.style.borderWidth = "0" + ( panelBorderWidth | 0 ) + "px";
+			pointOfViewPanelDiv.style.borderColor = panelBorderColor;
+			pointOfViewPanelDiv.style.borderRadius = panelBorderRadius;
+			document.body.appendChild( pointOfViewPanelDiv );
+
+			pointOfViewTitleDiv = document.createElement( "div" );
+			pointOfViewTitleDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewTitleDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewTitleDiv.style.top = "0" + ( ( panelVerticalMargin + ( 0 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewTitleDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewTitleDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewTitleDiv.style.lineHeight = pointOfViewTitleDiv.style.height;
+			pointOfViewTitleDiv.style.color = panelTitleTextColor;
+			pointOfViewTitleDiv.style.fontSize = panelTitleFontSize;
+			pointOfViewTitleDiv.style.backgroundColor = panelTitleBackgroundColor;
+			pointOfViewTitleDiv.style.opacity = panelTitleOpacity;
+			pointOfViewTitleDiv.style.borderStyle = panelTitleBorderStyle;
+			pointOfViewTitleDiv.style.borderWidth = "0" + ( panelTitleBorderWidth | 0 ) + "px";
+			pointOfViewTitleDiv.style.borderColor = panelTitleBorderColor;
+			pointOfViewTitleDiv.style.borderRadius = panelTitleBorderRadius;
+			document.body.appendChild( pointOfViewTitleDiv );
+
+			pointOfViewSelectArrowsDiv = document.createElement( "div" );
+			pointOfViewSelectArrowsDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewSelectArrowsDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewSelectArrowsDiv.style.top = "0" + ( ( panelVerticalMargin + ( 1 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectArrowsDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewSelectArrowsDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectArrowsDiv.style.color = panelSelectTextColor;
+			pointOfViewSelectArrowsDiv.style.fontSize = panelSelectFontSize;
+			pointOfViewSelectArrowsDiv.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewSelectArrowsDiv.style.opacity = panelSelectOpacity;
+			pointOfViewSelectArrowsDiv.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewSelectArrowsDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewSelectArrowsDiv.style.borderColor = panelSelectBorderColor;
+			pointOfViewSelectArrowsDiv.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewSelectArrowsDiv.innerHTML = "This button chooses <span style='color:" + panelSelectChoiceColor + "'>Arrows</span><br>\
+				for a view you can move with the arrows";
+			pointOfViewSelectArrowsDiv.addEventListener( "click", onPointOfViewSelectArrowsClick );
+			document.body.appendChild( pointOfViewSelectArrowsDiv );
+
+			pointOfViewSelectFollowDiv = document.createElement( "div" );
+			pointOfViewSelectFollowDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewSelectFollowDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewSelectFollowDiv.style.top = "0" + ( ( panelVerticalMargin + ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectFollowDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewSelectFollowDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectFollowDiv.style.color = panelSelectTextColor;
+			pointOfViewSelectFollowDiv.style.fontSize = panelSelectFontSize;
+			pointOfViewSelectFollowDiv.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewSelectFollowDiv.style.opacity = panelSelectOpacity;
+			pointOfViewSelectFollowDiv.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewSelectFollowDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewSelectFollowDiv.style.borderColor = panelSelectBorderColor;
+			pointOfViewSelectFollowDiv.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewSelectFollowDiv.innerHTML = "This button chooses <span style='color:" + panelSelectChoiceColor + "'>Follow</span><br>\
+				for a view from behind the robot";
+			pointOfViewSelectFollowDiv.addEventListener( "click", onPointOfViewSelectFollowClick );
+			document.body.appendChild( pointOfViewSelectFollowDiv );
+
+			pointOfViewSelectOrbitDiv = document.createElement( "div" );
+			pointOfViewSelectOrbitDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewSelectOrbitDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewSelectOrbitDiv.style.top = "0" + ( ( panelVerticalMargin + ( 3 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectOrbitDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewSelectOrbitDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectOrbitDiv.style.color = panelSelectTextColor;
+			pointOfViewSelectOrbitDiv.style.fontSize = panelSelectFontSize;
+			pointOfViewSelectOrbitDiv.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewSelectOrbitDiv.style.opacity = panelSelectOpacity;
+			pointOfViewSelectOrbitDiv.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewSelectOrbitDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewSelectOrbitDiv.style.borderColor = panelSelectBorderColor;
+			pointOfViewSelectOrbitDiv.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewSelectOrbitDiv.innerHTML = "This button chooses <span style='color:" + panelSelectChoiceColor + "'>Orbit</span><br>\
+				for a view where you drag the world around";
+			pointOfViewSelectOrbitDiv.addEventListener( "click", onPointOfViewSelectOrbitClick );
+			document.body.appendChild( pointOfViewSelectOrbitDiv );
+
+			pointOfViewSelectRobotDiv = document.createElement( "div" );
+			pointOfViewSelectRobotDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewSelectRobotDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewSelectRobotDiv.style.top = "0" + ( ( panelVerticalMargin + ( 4 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectRobotDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewSelectRobotDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectRobotDiv.style.color = panelSelectTextColor;
+			pointOfViewSelectRobotDiv.style.fontSize = panelSelectFontSize;
+			pointOfViewSelectRobotDiv.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewSelectRobotDiv.style.opacity = panelSelectOpacity;
+			pointOfViewSelectRobotDiv.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewSelectRobotDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewSelectRobotDiv.style.borderColor = panelSelectBorderColor;
+			pointOfViewSelectRobotDiv.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewSelectRobotDiv.innerHTML = "This button chooses <span style='color:" + panelSelectChoiceColor + "'>Robot</span><br>\
+				for a view from inside the robot";
+			pointOfViewSelectRobotDiv.addEventListener( "click", onPointOfViewSelectRobotClick );
+			document.body.appendChild( pointOfViewSelectRobotDiv );
+
+			pointOfViewSelectTrackDiv = document.createElement( "div" );
+			pointOfViewSelectTrackDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewSelectTrackDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			pointOfViewSelectTrackDiv.style.top = "0" + ( ( panelVerticalMargin + ( 5 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectTrackDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			pointOfViewSelectTrackDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewSelectTrackDiv.style.color = panelSelectTextColor;
+			pointOfViewSelectTrackDiv.style.fontSize = panelSelectFontSize;
+			pointOfViewSelectTrackDiv.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewSelectTrackDiv.style.opacity = panelSelectOpacity;
+			pointOfViewSelectTrackDiv.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewSelectTrackDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewSelectTrackDiv.style.borderColor = panelSelectBorderColor;
+			pointOfViewSelectTrackDiv.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewSelectTrackDiv.innerHTML = "This button chooses <span style='color:" + panelSelectChoiceColor + "'>Track</span><br>\
+				for a view that follows the robot";
+			pointOfViewSelectTrackDiv.addEventListener( "click", onPointOfViewSelectTrackClick );
+			document.body.appendChild( pointOfViewSelectTrackDiv );
+
+			pointOfViewClosePanelButton = document.createElement( "div" );
+			pointOfViewClosePanelButton.style.cssText = "position:absolute;text-align:center;display:none";
+			pointOfViewClosePanelButton.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin + ( 2 * panelBarWidth / 3 ) ) | 0 ) + "px";
+			pointOfViewClosePanelButton.style.top = "0" + ( ( panelVerticalMargin + ( 6 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			pointOfViewClosePanelButton.style.width = "0" + panelCloseButtonWidth + "px";
+			pointOfViewClosePanelButton.style.height = "0" + panelCloseButtonHeight + "px";
+			pointOfViewClosePanelButton.style.color = panelSelectTextColor;
+			pointOfViewClosePanelButton.style.fontSize = panelSelectFontSize;
+			pointOfViewClosePanelButton.style.backgroundColor = panelSelectBackgroundColor;
+			pointOfViewClosePanelButton.style.opacity = panelSelectOpacity;
+			pointOfViewClosePanelButton.style.borderStyle = panelSelectBorderStyle;
+			pointOfViewClosePanelButton.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			pointOfViewClosePanelButton.style.borderColor = panelSelectBorderColor;
+			pointOfViewClosePanelButton.style.borderRadius = panelSelectBorderRadius;
+			pointOfViewClosePanelButton.innerHTML = "Close";
+			pointOfViewClosePanelButton.addEventListener( "click", onPointOfViewClosePanelClick );
+			document.body.appendChild( pointOfViewClosePanelButton );
+
+			pointOfViewButton = new imageButton( "image/pointOfViewButton.png", "rendererDomElement", 0.01, 0.01, 0.05, 0.05, " ", false, onPointOfViewButtonClick );
+			pointOfViewButtonLoaded = false;
+
+			shovelPanelDiv = document.createElement( "div" );
+			shovelPanelDiv.style.cssText = "position:absolute;display:none";
+			shovelPanelDiv.style.left = "0" + ( panelHorizontalMargin | 0 ) + "px";
+			shovelPanelDiv.style.top = "0" + ( panelVerticalMargin | 0 ) + "px";
+			shovelPanelDiv.style.width = "0" + ( panelWidth | 0 ) + "px";
+			shovelPanelDiv.style.height = "0" + ( shovelPanelHeight | 0 ) + "px";
+			shovelPanelDiv.style.backgroundColor = panelBackgroundColor;
+			shovelPanelDiv.style.opacity = panelOpacity;
+			shovelPanelDiv.style.borderStyle = panelBorderStyle;
+			shovelPanelDiv.style.borderWidth = "0" + ( panelBorderWidth | 0 ) + "px";
+			shovelPanelDiv.style.borderColor = panelBorderColor;
+			shovelPanelDiv.style.borderRadius = panelBorderRadius;
+			document.body.appendChild( shovelPanelDiv );
+
+			shovelToggleAxesDiv = document.createElement( "div" );
+			shovelToggleAxesDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			shovelToggleAxesDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			shovelToggleAxesDiv.style.top = "0" + ( ( panelVerticalMargin + ( 0 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleAxesDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			shovelToggleAxesDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleAxesDiv.style.color = panelSelectTextColor;
+			shovelToggleAxesDiv.style.fontSize = panelSelectFontSize;
+			shovelToggleAxesDiv.style.backgroundColor = panelSelectBackgroundColor;
+			shovelToggleAxesDiv.style.opacity = panelSelectOpacity;
+			shovelToggleAxesDiv.style.borderStyle = panelSelectBorderStyle;
+			shovelToggleAxesDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			shovelToggleAxesDiv.style.borderColor = panelSelectBorderColor;
+			shovelToggleAxesDiv.style.borderRadius = panelSelectBorderRadius;
+			shovelToggleAxesDiv.innerHTML = "Toggle display of axes";
+			shovelToggleAxesDiv.addEventListener( "click", onShovelToggleAxesClick );
+			document.body.appendChild( shovelToggleAxesDiv );
+
+			shovelToggleCannonDiv = document.createElement( "div" );
+			shovelToggleCannonDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			shovelToggleCannonDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			shovelToggleCannonDiv.style.top = "0" + ( ( panelVerticalMargin + ( 1 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleCannonDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			shovelToggleCannonDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleCannonDiv.style.color = panelSelectTextColor;
+			shovelToggleCannonDiv.style.fontSize = panelSelectFontSize;
+			shovelToggleCannonDiv.style.backgroundColor = panelSelectBackgroundColor;
+			shovelToggleCannonDiv.style.opacity = panelSelectOpacity;
+			shovelToggleCannonDiv.style.borderStyle = panelSelectBorderStyle;
+			shovelToggleCannonDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			shovelToggleCannonDiv.style.borderColor = panelSelectBorderColor;
+			shovelToggleCannonDiv.style.borderRadius = panelSelectBorderRadius;
+			shovelToggleCannonDiv.innerHTML = "Toggle outlines on physics bodies";
+			shovelToggleCannonDiv.addEventListener( "click", onShovelToggleCannonClick );
+			document.body.appendChild( shovelToggleCannonDiv );
+
+			shovelClosePanelButton = document.createElement( "div" );
+			shovelClosePanelButton.style.cssText = "position:absolute;text-align:center;display:none";
+			shovelClosePanelButton.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin + ( 2 * panelBarWidth / 3 ) ) | 0 ) + "px";
+			shovelClosePanelButton.style.top = "0" + ( ( panelVerticalMargin + ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			shovelClosePanelButton.style.width = "0" + panelCloseButtonWidth + "px";
+			shovelClosePanelButton.style.height = "0" + panelCloseButtonHeight + "px";
+			shovelClosePanelButton.style.color = panelSelectTextColor;
+			shovelClosePanelButton.style.fontSize = panelSelectFontSize;
+			shovelClosePanelButton.style.backgroundColor = panelSelectBackgroundColor;
+			shovelClosePanelButton.style.opacity = panelSelectOpacity;
+			shovelClosePanelButton.style.borderStyle = panelSelectBorderStyle;
+			shovelClosePanelButton.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			shovelClosePanelButton.style.borderColor = panelSelectBorderColor;
+			shovelClosePanelButton.style.borderRadius = panelSelectBorderRadius;
+			shovelClosePanelButton.innerHTML = "Close";
+			shovelClosePanelButton.addEventListener( "click", onShovelClosePanelClick );
+			document.body.appendChild( shovelClosePanelButton );
+
+			shovelButton = new imageButton( "image/shovelButton.png", "rendererDomElement", 0.51, 0.01, 0.05, 0.05, " ", false, onShovelButtonClick );
+			shovelButtonLoaded = false;
+
+			restartAnimationButton = new imageButton( "image/restartAnimationArrow.png", "rendererDomElement", 0.94, 0.01, 0.05, 0.05, " ", false, restartAnimation );
+			restartAnimationButtonLoaded = false;
+			// restartAnimationButton.visible.style.zIndex = 10;
+
+			upDownLeftRightButton = new imageButton( "image/upDownLeftRightArrows.png", "rendererDomElement", 0.01, 0.85, 0.1, 0.14, " ", true, upDownLeftRightButtonHandler );
+			upDownLeftRightButtonLoaded = false;
+
+			inOutButton = new imageButton( "image/inOutArrows.png", "rendererDomElement", 0.2, 0.85, 0.1, 0.14, " ", true, inOutButtonHandler );
+			inOutButtonLoaded = false;
+
 			camera = new THREE.PerspectiveCamera( 80, 1.3, 1, 20000 );
 			camera.position.set( 600, 300, 400 );
 			renderer = new THREE.WebGLRenderer();
@@ -113,13 +496,8 @@
 			orbitControls = new THREE.OrbitControls( camera );
 			orbitControls.damping = 0.2;
 			orbitControls.maxDistance = horizonDistance;
-			orbitControls.maxPolarAngle = Math.PI / 2;
+			// orbitControls.maxPolarAngle = Math.PI / 2;
 			orbitControls.addEventListener( 'change', render );
-			setCameraPositioningMode( "Orbit" );
-
-			world = new CANNON.World();
-			world.gravity.set( 0, -9.8, 0 );
-			world.broadphase = new CANNON.NaiveBroadphase();
 
 			caDebugOutliner = new THREE.CannonDebugRenderer( scene, world );
 
@@ -127,25 +505,27 @@
 			// ... the jpg images are "painted" on the OUTSIDE faces of the box so flip them right-left to view from the inside
 			// ... with the camera on the +Y side of 0, 0, 0 (with +X headingn off to the right) looking through 0, 0, 0 it's "seeing" the "south" wall (face 6 in the loading order)
 			// ...loading order for box faces is west, east, sky, ground, north, south
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/westWallMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/eastWallMirrored.jpg' ), side:THREE.DoubleSide } ) );
+			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeWestMirrored.jpg' ), side:THREE.DoubleSide } ) );
+			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeEastMirrored.jpg' ), side:THREE.DoubleSide } ) );
 			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { color:0x8888ff, side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { color:0x201000, side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/northWallMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/southWallMirrored.jpg' ), side:THREE.DoubleSide } ) );
+			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/concrete.jpg' ), side:THREE.DoubleSide } ) );
+			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeNorthMirrored.jpg' ), side:THREE.DoubleSide } ) );
+			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeSouthMirrored.jpg' ), side:THREE.DoubleSide } ) );
 			horizonMaterial = new THREE.MeshFaceMaterial( horizonMaterialArray );
-			horizonGeometry = new THREE.BoxGeometry( 2 * horizonDistance, 2 * horizonDistance, 2 * horizonDistance );
+			// horizonGeometry = new THREE.BoxGeometry( 2 * horizonDistance, 2 * horizonDistance, 2 * horizonDistance );
+			horizonGeometry = new THREE.BoxGeometry( ( trackWestDistance + trackEastDistance ), trackSkyHeight, ( trackNorthDistance + trackSouthDistance ) );
 			horizonMesh = new THREE.Mesh( horizonGeometry, horizonMaterial );
-			horizonMesh.position.set( 0, 0.9 * horizonDistance, 0 );
+			horizonMesh.position.set( 0, ( ( trackSkyHeight / 2 ) - trackThickness ), 0 );
 			scene.add( horizonMesh );
 
-			// Ground plane mesh
-			groundPlaneGeometry = new THREE.PlaneBufferGeometry( 2.1 * horizonDistance, 2.1 * horizonDistance );
-			groundPlaneMaterial = new THREE.MeshLambertMaterial( { color:0x883311 } );
-			groundPlaneMesh = new THREE.Mesh( groundPlaneGeometry, groundPlaneMaterial );
-			groundPlaneMesh.rotation.set( - Math.PI / 2, 0, 0 );
-			groundPlaneMesh.position.set( 0, -30, 0 );
-			scene.add( groundPlaneMesh );
+			// // Ground plane mesh
+			// groundPlaneGeometry = new THREE.PlaneBufferGeometry( 2.1 * horizonDistance, 2.1 * horizonDistance );
+			// groundPlaneMaterial = new THREE.MeshLambertMaterial( { color:0x883311 } );
+			// // groundPlaneMaterial = new THREE.MeshLambertMaterial( { map: THREE.ImageUtils.loadTexture( 'image/grass.jpg' ) } );
+			// groundPlaneMesh = new THREE.Mesh( groundPlaneGeometry, groundPlaneMaterial );
+			// groundPlaneMesh.rotation.set( - Math.PI / 2, 0, 0 );
+			// groundPlaneMesh.position.set( 0, -30, 0 );
+			// scene.add( groundPlaneMesh );
 
 			// Race track mesh
 			var stlLoader = new THREE.STLLoader();
@@ -162,13 +542,13 @@
 			var trackBottomShape = new CANNON.Box( new CANNON.Vec3( trackBodyBottomHalfWidth, wallHalfThickness, trackInnerRadius + trackWidth ) );
 			var trackBottomBody = new CANNON.Body( { material: trackBodyMaterial } );
 			trackBottomBody.addShape( trackBottomShape );
-			trackBottomBody.position.set( ( trackStraightStretchLength / 2 ), -wallHalfThickness, 0 );
-			world.add( trackBottomBody );
+			trackBottomBody.position.set( 0, -wallHalfThickness, 0 );
+			world.addBody( trackBottomBody );
 			// - race track body top
 			var trackTopBody = new CANNON.Body( { material: trackBodyMaterial } );
 			trackTopBody.addShape( trackBottomShape );
-			trackTopBody.position.set( 500, trackWidth * 2, 0 );
-			world.add( trackTopBody );
+			trackTopBody.position.set( 0, ( ( wallHalfHeight * 2 ) - wallHalfThickness ), 0 );
+			world.addBody( trackTopBody );
 			// - race track body curve inside walls
 			// - - make "n" + 1 vertical wall segments to "surround" the half-circle curve
 			// - - angle between each segment is pi/n and rotation of first one is 0 to mate with straight section wall
@@ -176,104 +556,150 @@
 			var trackCurveInsideShape = new CANNON.Box( new CANNON.Vec3( ( (trackInnerRadius * Math.tan( Math.PI / ( 2 * curveWallCount ) ) ) ), wallHalfHeight, wallHalfThickness ) );
 			var trackCurveInsideRadius = trackInnerRadius - wallHalfThickness;
 			for( var i = 0; i <= curveWallCount; i ++ ) {
-				// first the curve centered at x = 0
+				// first the "east" curve
 				// var rotation = Math.PI / ( 2 * curveWallCount ) + i * ( Math.PI / curveWallCount );
 				var rotation = i * ( Math.PI / curveWallCount );
 				var xTranslation = trackCurveInsideRadius * Math.sin( rotation );
 				var zTranslation = trackCurveInsideRadius * Math.cos( rotation );
 				trackCurveInsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
 				trackCurveInsideBody1.addShape( trackCurveInsideShape );
-				trackCurveInsideBody1.position.set( -xTranslation, trackWidth, -zTranslation );
+				trackCurveInsideBody1.position.set( ( trackEastCurveCenterX - xTranslation ), trackWidth, -zTranslation );
 				trackCurveInsideBody1.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.add( trackCurveInsideBody1 );
-				// then the curve at the other end
+				world.addBody( trackCurveInsideBody1 );
+				// then the "west" curve
 				trackCurveInsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
 				trackCurveInsideBody2.addShape( trackCurveInsideShape );
-				trackCurveInsideBody2.position.set( trackStraightStretchLength + xTranslation, trackWidth, zTranslation );
+				trackCurveInsideBody2.position.set( ( trackWestCurveCenterX + xTranslation ), trackWidth, zTranslation );
 				trackCurveInsideBody2.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.add( trackCurveInsideBody2 );
+				world.addBody( trackCurveInsideBody2 );
 			}
 			// - race track body straight inside walls
 			var trackStraightInsideShape = new CANNON.Box( new CANNON.Vec3( ( trackStraightStretchLength / 2 ), wallHalfHeight, wallHalfThickness ) );
 			var trackStraightInsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
 			trackStraightInsideBody1.addShape( trackStraightInsideShape );
-			trackStraightInsideBody1.position.set( ( trackStraightStretchLength / 2 ), trackWidth, ( trackInnerRadius - wallHalfThickness ) );
-			world.add( trackStraightInsideBody1 );
+			trackStraightInsideBody1.position.set( 0, trackWidth, ( trackInnerRadius - wallHalfThickness ) );
+			world.addBody( trackStraightInsideBody1 );
 			var trackStraightInsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
 			trackStraightInsideBody2.addShape( trackStraightInsideShape );
-			trackStraightInsideBody2.position.set( ( trackStraightStretchLength / 2 ), trackWidth, -( trackInnerRadius - wallHalfThickness ) );
-			world.add( trackStraightInsideBody2 );
+			trackStraightInsideBody2.position.set( 0, trackWidth, -( trackInnerRadius - wallHalfThickness ) );
+			world.addBody( trackStraightInsideBody2 );
 			// - race track body straight outside walls
 			var trackStraightOutsideShape = new CANNON.Box( new CANNON.Vec3( ( trackStraightStretchLength / 2 ), wallHalfHeight, wallHalfThickness ) );
 			var trackStraightOutsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
 			trackStraightOutsideBody1.addShape( trackStraightOutsideShape );
-			trackStraightOutsideBody1.position.set( ( trackStraightStretchLength / 2 ), trackWidth, ( trackInnerRadius + trackWidth + wallHalfThickness ) );
-			world.add( trackStraightOutsideBody1 );
+			trackStraightOutsideBody1.position.set( 0, trackWidth, ( trackInnerRadius + trackWidth + wallHalfThickness ) );
+			world.addBody( trackStraightOutsideBody1 );
 			var trackStraightOutsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
 			trackStraightOutsideBody2.addShape( trackStraightOutsideShape );
-			trackStraightOutsideBody2.position.set( ( trackStraightStretchLength / 2 ), trackWidth, -( trackInnerRadius + trackWidth + wallHalfThickness ) );
-			world.add( trackStraightOutsideBody2 );
+			trackStraightOutsideBody2.position.set( 0, trackWidth, -( trackInnerRadius + trackWidth + wallHalfThickness ) );
+			world.addBody( trackStraightOutsideBody2 );
 			// - race track body curve outside walls
 			// - - make "n" + 1 vertical wall segments to "surround" the half-circle curve
 			// - - angle between each segment is pi/n and rotation of first one is 0 to mate with straight section wall
-
-			// var trackCurveOutsideShape = new CANNON.Box( new CANNON.Vec3( ( 1.2 * ( (trackInnerRadius + trackWidth ) * Math.tan( Math.PI / ( 2 * curveWallCount ) ) ) ), wallHalfHeight, wallHalfThickness ) );
-
 			var trackCurveOutsideShape = new CANNON.Box( new CANNON.Vec3( ( (trackInnerRadius + trackWidth ) * Math.tan( Math.PI / ( 2 * curveWallCount ) ) ), wallHalfHeight, wallHalfThickness ) );
 			var trackCurveOutsideRadius = trackInnerRadius + trackWidth + wallHalfThickness;
 			for( var i = 0; i <= curveWallCount; i ++ ) {
-				// first the curve centered at x = 0
+				// first the "east" curve
 				// var rotation = Math.PI / ( 2 * curveWallCount ) + i * ( Math.PI / curveWallCount );
 				var rotation = i * ( Math.PI / curveWallCount );
 				var xTranslation = trackCurveOutsideRadius * Math.sin( rotation );
 				var zTranslation = trackCurveOutsideRadius * Math.cos( rotation );
 				trackCurveOutsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
 				trackCurveOutsideBody1.addShape( trackCurveOutsideShape );
-				trackCurveOutsideBody1.position.set( -xTranslation, trackWidth, -zTranslation );
+				trackCurveOutsideBody1.position.set( ( trackEastCurveCenterX - xTranslation ), trackWidth, -zTranslation );
 				trackCurveOutsideBody1.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.add( trackCurveOutsideBody1 );
-				// then the curve at the other end
+				world.addBody( trackCurveOutsideBody1 );
+				// then the "west" curve
 				trackCurveOutsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
 				trackCurveOutsideBody2.addShape( trackCurveOutsideShape );
-				trackCurveOutsideBody2.position.set( trackStraightStretchLength + xTranslation, trackWidth, zTranslation );
+				trackCurveOutsideBody2.position.set( ( trackWestCurveCenterX + xTranslation ), trackWidth, zTranslation );
 				trackCurveOutsideBody2.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.add( trackCurveOutsideBody2 );
+				world.addBody( trackCurveOutsideBody2 );
 			}
 
 			visibleAxes = new THREE.AxisHelper( 300 );
 			visibleAxesVisible = false;
+			cannonAxes = new CannonAxes( 400 );
+			cannonAxesVisible = false;
 			visibleCameraVector = new VisibleVector( camera.getWorldDirection(), camera.position, 500, 1.0, 0.5, 1.0 );
 			scene.add( visibleCameraVector );
 
-			vehicleMesh = new THREE.Mesh( new THREE.SphereGeometry( trackWidth / 3 ), new THREE.MeshLambertMaterial( { color: 0x6789ab } ) );
-			scene.add( vehicleMesh );
-			var vehicleBodyMaterial = new CANNON.Material();
-			vehicleBody = new CANNON.Body( { material: vehicleBodyMaterial, mass: 100 } );
-			vehicleBody.addShape( new CANNON.Sphere( trackWidth / 3 ) );
-			world.add( vehicleBody );
+			robotMesh = new THREE.Mesh( new THREE.SphereGeometry( trackWidth / 3 ), new THREE.MeshLambertMaterial( { color: 0x6789ab } ) );
+			scene.add( robotMesh );
+			var robotBodyMaterial = new CANNON.Material();
+			robotBody = new CANNON.Body( { material: robotBodyMaterial, mass: 100, linearDamping: 0.9, angularDamping: 0 } );
+			robotBody.addShape( new CANNON.Sphere( trackWidth / 3 ) );
+			world.addBody( robotBody );
 
-			var vehicleTrackMaterialContactEquation = new CANNON.ContactMaterial( vehicleBodyMaterial, trackBodyMaterial, { friction: 0, restitution: 0.0 } );
-			world.addContactMaterial( vehicleTrackMaterialContactEquation );
+			var mainSpring = new CANNON.Spring( currentTrackPathPointBody, robotBody, {
+				localAnchorA: new CANNON.Vec3( 0, 0, 0 ),
+				localAnchorB: new CANNON.Vec3( 0, 0, 0 ),
+				restLength: 0,
+				stiffness: 1000,
+				damping: 10
+			} );
+			world.addEventListener( "postStep", function( event ) {
+				mainSpring.applyForce();
+			} );
+			var robotTrackMaterialContactEquation = new CANNON.ContactMaterial( robotBodyMaterial, trackBodyMaterial, { friction: 0, restitution: 0.0 } );
+			world.addContactMaterial( robotTrackMaterialContactEquation );
 
 			restartAnimation();
 
-			document.addEventListener( "keydown", checkKeyDown );
+			// document.addEventListener( "keydown", checkKeyDown );
 			window.addEventListener( "resize", onWindowResize, false );
 			window.addEventListener( "orientationchange", onWindowResize, false );
+
+			stats = new Stats();
+			stats.domElement.style.position = "absolute";
+			stats.domElement.style.top = "0px";
+			stats.domElement.style.right = "30%";
+			document.body.appendChild( stats.domElement );
+
+			// setCameraPositioningMode( "Arrows" );
+			setCameraPositioningMode( "Follow" );
+			// setCameraPositioningMode( "Robot" );
+			// setCameraPositioningMode( "Orbit" );
+			// setCameraPositioningMode( "Track" );
+			animationPaused = false;
 
 			animate();
 		}
 
 		function moveMeshToBody() {
-			vehicleMesh.position.copy( vehicleBody.position );
+			robotMesh.position.copy( robotBody.position );
+		}
+
+		function buttonPoller() {
+			if( upDownLeftRightButton.buttonDown ) {
+				var leftRightDistance = ( upDownLeftRightButton.touchPointX - 50.0 ) * upDownLeftRightButtonMaxLeftRightChange;
+				if( leftRightDistance > 0 )
+					moveCameraRight( leftRightDistance );
+				if( leftRightDistance < 0 )
+					moveCameraLeft( -leftRightDistance );
+				var upDownDistance = ( upDownLeftRightButton.touchPointY - 50.0 ) * upDownLeftRightButtonMaxUpDownChange;
+				if( upDownDistance > 0 )
+					moveCameraDown( upDownDistance );
+				if( upDownDistance < 0 )
+					moveCameraUp( -upDownDistance );
+			}
+			if( inOutButton.buttonDown ) {
+				var inOutDistance = ( inOutButton.touchPointY - 50.0 ) * inOutButtonMaxInOutChange;
+				if( inOutDistance > 0 )
+					moveCameraOut( inOutDistance );
+				if( inOutDistance < 0 )
+					moveCameraIn( -inOutDistance );
+			}
 		}
 
 		function setCameraPositioningMode( mode ) {
 			// disable current camera positioning mode
 			switch( cameraPositioningMode ) {
-				case "Aerial":
+				case "Arrows":
 					break;
 				case "Follow":
+					break;
+				case "Robot":
 					break;
 				case "Orbit":
 					orbitControls.enabled = false;
@@ -285,158 +711,208 @@
 			}
 			cameraPositioningMode = mode;
 			// enable new camera positioning mode
+			var titleStart = "Point of view is set to "
 			switch( cameraPositioningMode ) {
-				case "Aerial":
+				case "Arrows":
+					pointOfViewTitleDiv.innerHTML = titleStart + "<span style='color:" + panelTitlePresentColor + "'>Arrows</span>";
 					break;
 				case "Follow":
-					// Initialize the tether length between vehicle and camera to its present value.
-					cameraTetherLength = vehicleMesh.position.clone().sub( camera.position ).length();
+					pointOfViewTitleDiv.innerHTML = titleStart + "<span style='color:" + panelTitlePresentColor + "'>Follow</span>";
+					// Initialize the tether length between robot and camera to its present value.
+					cameraTetherLength = robotMesh.position.clone().sub( camera.position ).length();
 					// Initialize the manual adjustment vector to "none yet"
 					cameraFollowDisplacement.set( 0, 0, 0 );
 					break;
 				case "Orbit":
+					pointOfViewTitleDiv.innerHTML = titleStart + "<span style='color:" + panelTitlePresentColor + "'>Orbit</span>";
 					orbitControls.enabled = true;
 					break;
+				case "Robot":
+					pointOfViewTitleDiv.innerHTML = titleStart + "<span style='color:" + panelTitlePresentColor + "'>Robot</span>";
+					cameraForwardViewDistance = robotMesh.position.clone().sub( camera.position ).length();
+					// Initialize the manual adjustment vector to "none yet"
+					cameraRobotDisplacement.set( 0, 0, 0 );
+					break;
 				case "Track":
+					pointOfViewTitleDiv.innerHTML = titleStart + "<span style='color:" + panelTitlePresentColor + "'>Track</span>";
 					break;
 				default:
 					break;
 			}
 		}
 
-		function moveCameraUp() {
+		function moveCameraUp( distance ) {
 			switch( cameraPositioningMode ) {
-				case "Aerial":
-					camera.position.y *= 1.1;
+				case "Arrows":
+					// camera.position.y *= 1.1;
+					camera.position.y += distance;
 					camera.updateProjectionMatrix();
 					break;
 				case "Follow":
-					cameraFollowDisplacement.y += 0.1 * cameraTetherLength;
+					// cameraFollowDisplacement.y += 0.1 * cameraTetherLength;
+					cameraFollowDisplacement.y += distance;
 					break;
 				case "Orbit":
 					break;
+				case "Robot":
+					// cameraRobotDisplacement.y += 0.1 * cameraForwardViewDistance;
+					cameraRobotDisplacement.y += distance;
+					break;
 				case "Track":
-					camera.position.y *= 1.1;
+					// camera.position.y *= 1.1;
+					camera.position.y += distance;
+					break;
+				default:
+					break;
+			}
+		}
+		function moveCameraDown( distance ) {
+			switch( cameraPositioningMode ) {
+				case "Arrows":
+					// camera.position.y *= 0.9;
+					camera.position.y -= distance;
+					camera.updateProjectionMatrix();
+					break;
+				case "Follow":
+					// cameraFollowDisplacement.y -= 0.1 * cameraTetherLength;
+					cameraFollowDisplacement.y -= distance;
+					break;
+				case "Orbit":
+					break;
+				case "Robot":
+					// cameraRobotDisplacement.y -= 0.1 * cameraForwardViewDistance;
+					cameraRobotDisplacement.y -= distance;
+					break;
+				case "Track":
+					// camera.position.y *= 0.9;
+					camera.position.y -= distance;
+					break;
+				default:
+					break;
+			}
+		}
+		function moveCameraLeft( distance ) {
+			switch( cameraPositioningMode ) {
+				case "Arrows":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( distance ) );
+					camera.updateProjectionMatrix();
+					break;
+				case "Follow":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( distance ) );
+					camera.lookAt( robotMesh.position );
+					camera.updateProjectionMatrix();
+					break;
+				case "Orbit":
+					break;
+				case "Robot":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					cameraRobotDisplacement.add( leftDirection.multiplyScalar( distance ) );
+					break;
+				case "Track":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				default:
 					break;
 			}
 		}
-		function moveCameraDown() {
+		function moveCameraRight( distance ) {
 			switch( cameraPositioningMode ) {
-				case "Aerial":
-					camera.position.y *= 0.9;
+				case "Arrows":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( -distance ) );
 					camera.updateProjectionMatrix();
 					break;
 				case "Follow":
-					cameraFollowDisplacement.y -= 0.1 * cameraTetherLength;
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( -distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				case "Orbit":
 					break;
+				case "Robot":
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					cameraRobotDisplacement.add( leftDirection.multiplyScalar( distance ) );
+					break;
 				case "Track":
-					camera.position.y *= 0.9;
+					var leftDirection = new THREE.Vector3();
+					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
+					// camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( leftDirection.multiplyScalar( -distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				default:
 					break;
 			}
 		}
-		function moveCameraLeft() {
+		function moveCameraIn( distance ) {
 			switch( cameraPositioningMode ) {
-				case "Aerial":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
+				case "Arrows":
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( distance ) );
 					camera.updateProjectionMatrix();
 					break;
 				case "Follow":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				case "Orbit":
 					break;
+				case "Robot":
+					cameraRobotDisplacement.add( camera.getWorldDirection().multiplyScalar( distance ) );
+					break;
 				case "Track":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( 0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				default:
 					break;
 			}
 		}
-		function moveCameraRight() {
+		function moveCameraOut( distance ) {
 			switch( cameraPositioningMode ) {
-				case "Aerial":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
+				case "Arrows":
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( -distance ) );
 					camera.updateProjectionMatrix();
 					break;
 				case "Follow":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( -distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				case "Orbit":
 					break;
-				case "Track":
-					var leftDirection = new THREE.Vector3();
-					leftDirection.crossVectors( camera.up, camera.getWorldDirection() );
-					camera.position.add( leftDirection.multiplyScalar( -0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
-					camera.updateProjectionMatrix();
-					break;
-				default:
-					break;
-			}
-		}
-		function moveCameraIn() {
-			switch( cameraPositioningMode ) {
-				case "Aerial":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
-					camera.updateProjectionMatrix();
-					break;
-				case "Follow":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
-					camera.updateProjectionMatrix();
-					break;
-				case "Orbit":
+				case "Robot":
+					cameraRobotDisplacement.add( camera.getWorldDirection().multiplyScalar( -distance ) );
 					break;
 				case "Track":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( 0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
-					camera.updateProjectionMatrix();
-					break;
-				default:
-					break;
-			}
-		}
-		function moveCameraOut() {
-			switch( cameraPositioningMode ) {
-				case "Aerial":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
-					camera.updateProjectionMatrix();
-					break;
-				case "Follow":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
-					camera.updateProjectionMatrix();
-					break;
-				case "Orbit":
-					break;
-				case "Track":
-					camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
-					camera.lookAt( vehicleMesh.position );
+					// camera.position.add( camera.getWorldDirection().multiplyScalar( -0.1 * camera.position.length() ) );
+					camera.position.add( camera.getWorldDirection().multiplyScalar( -distance ) );
+					camera.lookAt( robotMesh.position );
 					camera.updateProjectionMatrix();
 					break;
 				default:
@@ -444,157 +920,110 @@
 			}
 		}
 
-		function toggleHelpDisplay() {
-			if( helpDisplayVisible ) {
-				helpDisplayVisible = false;
-				helpButton.activate();
-				helpTextBox.deactivate();
-				// helpDisplayElement.style.display = "none";
+		function onPointOfViewButtonClick( event ) {
+			if( shovelPanelIsOpen ) return;
+			pointOfViewPanelDiv.style.display = "block";
+			pointOfViewTitleDiv.style.display = "block";
+			pointOfViewSelectArrowsDiv.style.display = "block";
+			pointOfViewSelectFollowDiv.style.display = "block";
+			pointOfViewSelectOrbitDiv.style.display = "block";
+			pointOfViewSelectRobotDiv.style.display = "block";
+			pointOfViewSelectTrackDiv.style.display = "block";
+			pointOfViewClosePanelButton.style.display = "block";
+			pointOfViewButton.deactivate();
+			shovelButton.deactivate();
+			pointOfViewPanelIsOpen = true;
+			animationPaused = true;
+		}
+		function onPointOfViewClosePanelClick( event ) {
+			pointOfViewPanelDiv.style.display = "none";
+			pointOfViewTitleDiv.style.display = "none";
+			pointOfViewSelectArrowsDiv.style.display = "none";
+			pointOfViewSelectFollowDiv.style.display = "none";
+			pointOfViewSelectOrbitDiv.style.display = "none";
+			pointOfViewSelectRobotDiv.style.display = "none";
+			pointOfViewSelectTrackDiv.style.display = "none";
+			pointOfViewClosePanelButton.style.display = "none";
+			pointOfViewButton.activate();
+			shovelButton.activate();
+			pointOfViewPanelIsOpen = false;
+			animationPaused = false;
+		}
+		function onPointOfViewSelectArrowsClick( event ) {
+			setCameraPositioningMode( "Arrows" );
+		}
+		function onPointOfViewSelectFollowClick( event ) {
+			setCameraPositioningMode( "Follow" );
+		}
+		function onPointOfViewSelectOrbitClick( event ) {
+			setCameraPositioningMode( "Orbit" );
+		}
+		function onPointOfViewSelectRobotClick( event ) {
+			setCameraPositioningMode( "Robot" );
+		}
+		function onPointOfViewSelectTrackClick( event ) {
+			setCameraPositioningMode( "Track" );
+		}
+
+		function onShovelButtonClick( event ) {
+			if( pointOfViewPanelIsOpen ) return;
+			shovelPanelDiv.style.display = "block";
+			shovelToggleCannonDiv.style.display = "block";
+			shovelToggleAxesDiv.style.display = "block";
+			shovelClosePanelButton.style.display = "block";
+			shovelButton.deactivate();
+			pointOfViewButton.deactivate();
+			shovelPanelIsOpen = true;
+			animationPaused = true;
+		}
+		function onShovelClosePanelClick( event ) {
+			shovelPanelDiv.style.display = "none";
+			shovelToggleCannonDiv.style.display = "none";
+			shovelToggleAxesDiv.style.display = "none";
+			shovelClosePanelButton.style.display = "none";
+			shovelButton.activate();
+			pointOfViewButton.activate();
+			shovelPanelIsOpen = false;
+			animationPaused = false;
+		}
+		function onShovelToggleCannonClick( event ) {
+			outlineBodies = !outlineBodies;
+		}
+		function onShovelToggleAxesClick( event ) {
+			if( visibleAxesVisible ) {
+				visibleAxesVisible = false;
+				scene.remove( visibleAxes );
 			} else {
-				helpDisplayVisible = true;
-				helpButton.deactivate();
-				helpTextBox.activate();
-				// helpDisplayElement.style.display = "block";
+				visibleAxesVisible = true;
+				scene.add( visibleAxes );
 			}
-		}
-		function onHelpButtonClick( event ) {
-			toggleHelpDisplay();
-		}
-		function onHelpTextClick( event ) {
-			if( helpDisplayVisible )
-				toggleHelpDisplay();
+			if( cannonAxesVisible ) {
+				cannonAxesVisible = false;
+				scene.remove( cannonAxes );
+			} else {
+				cannonAxesVisible = true;
+				scene.add( cannonAxes );
+			}
 		}
 
-		function checkKeyDown( event ) {
-			if( event.defaultPrevented ) return;
-			var handled = false;
-			var keyCode = event.keyCode;
-			if( keyCode !== undefined ) {
-				switch( keyCode ) {
-					case 32: // space bar
-						break;
-					case 37: // left arrow
-						break;
-					case 39: // right arrow
-						break;
-					case 40: // down arrow
-						break;
-					case 38: // up arrow
-						break;
-					case 109: // minus key on keypad
-						moveCameraOut();
-						handled = true;
-						break;
-					case 189: // minus key on main keyboard (if shift-down is false it's the "-" rather than the "_")
-						if( !event.shiftKey ) {
-							moveCameraOut();
-							handled = true;
-						}
-						break;
-					case 187: // plus key on main keyboard (if shift-down is true it's the "+" rather than the "=")
-						if( event.shiftKey ) {
-							moveCameraIn();
-							handled = true;
-						}
-						break;
-					case 107: // plus key on key pad
-						moveCameraIn();
-						handled = true;
-						break;
-					case 65: // A
-						moveCameraLeft();
-						handled = true;
-						break;
-					case 66: // B
-						break;
-					case 67: // C
-						outlineBodies = !outlineBodies;
-						handled = true;
-						break;
-					case 68: // D
-						moveCameraRight();
-						handled = true;
-						break;
-					case 69: // E
-						break;
-					case 70: // F
-						setCameraPositioningMode( "Follow" );
-						handled = true;
-						break;
-					case 71: // G
-						break;
-					case 72: // H
-						toggleHelpDisplay();
-						handled = true;
-						break;
-					case 73: // I
-						break;
-					case 74: // J
-						break;
-					case 75: // K
-						break;
-					case 76: // L
-						break;
-					case 77: // M
-						slowMotion = !slowMotion;
-						handled = true;
-						break;
-					case 78: // N
-						break;
-					case 79: // O
-						setCameraPositioningMode( "Orbit" );
-						handled = true;
-						break;
-					case 80: // P
-						break;
-					case 81: // Q
-						break;
-					case 82: // R
-						if( !event.metaKey ) {
-							restartAnimation();
-							handled = true;
-						}
-						break;
-					case 83: // S
-						moveCameraDown();
-						handled = true;
-						break;
-					case 84: // T
-						setCameraPositioningMode( "Track" );
-						handled = true;
-						break;
-					case 85: // U
-						moveCameraUp();
-						handled = true;
-						break;
-					case 86: // V
-						setCameraPositioningMode( "Aerial" );
-						handled = true;
-						break;
-					case 87: // W
-						moveCameraUp();
-						handled = true;
-						break;
-					case 88: // X
-						if( visibleAxesVisible ) {
-							visibleAxesVisible = false;
-							scene.remove( visibleAxes );
-						} else {
-							visibleAxesVisible = true;
-							scene.add( visibleAxes );
-						}
-						break;
-					case 89: // Y
-						break;
-					case 90: // Z
-						break;
-					default:
-						break;
-				}
-			}
-			if( handled ) {
-				event.preventDefault();
-			}
+		function upDownLeftRightButtonHandler( event ) {
+		}
+
+		function inOutButtonHandler( event ) {
+		}
+
+		function pointOnRobotVelocityVector( distanceFromRobot ) {
+			// Get the direction of the robot's present velocity
+			var robotVelocityVector = new THREE.Vector3();
+			robotVelocityVector.copy( robotBody.velocity );
+			// Normalize it to a length of 1
+			var velocityDirectionOnlyVector = new THREE.Vector3();
+			velocityDirectionOnlyVector.copy( robotVelocityVector.clone().normalize() );
+			// Scale it to have a length of the desired distance from the robot
+			var desiredVectorToReturn = new THREE.Vector3();
+			desiredVectorToReturn.copy( velocityDirectionOnlyVector );
+			desiredVectorToReturn.multiplyScalar( distanceFromRobot );
+			return desiredVectorToReturn;
 		}
 
 		function onWindowResize() {
@@ -604,11 +1033,15 @@
 		}
 
 		function restartAnimation() {
-			vehicleBody.velocity = new CANNON.Vec3( 2000, 0, 0 );
-			vehicleBody.position.set( 0, 100, trackInnerRadius + ( trackWidth / 2 ) );
+			// robotBody.velocity = new CANNON.Vec3( 2000, 0, 0 );
+			// robotBody.position.set( 0, 100, trackInnerRadius + ( trackWidth / 2 ) );
+			robotBody.position.copy( trackPathPoints[ 0 ].location );
+			robotBody.position.y = ( trackWidth / 3 );
+			currentTrackPathPoint = 0;
 		}
 
 		function processPhysics() {
+			currentTrackPathPointBody.position.copy( trackPathPoints[ currentTrackPathPoint ].location );
 			world.step( timeStep );
 			moveMeshToBody();
 		}
@@ -622,20 +1055,38 @@
 
 		function animate() {
 			requestAnimationFrame( animate );
-			if( helpDisplayVisible == undefined) {
-				// We get here if we're still waiting for the help button image to load and the button to become defined
-				if( helpButton != undefined ) {
-					// We get here if our wait is over and the button is ready
-					helpDisplayVisible = false;
-					helpButton.activate();
+			stats.update();
+			if( !pointOfViewButtonLoaded ) {
+				if( pointOfViewButton != undefined ) {
+					pointOfViewButtonLoaded = true;
+					pointOfViewButton.activate();
 				}
 			}
-			if( restartAnimationButtonLoaded == false ) {
+			if( !shovelButtonLoaded ) {
+				if( shovelButton != undefined ) {
+					shovelButtonLoaded = true;
+					shovelButton.activate();
+				}
+			}
+			if( !restartAnimationButtonLoaded ) {
 				if( restartAnimationButton != undefined ) {
 					restartAnimationButtonLoaded = true;
 					restartAnimationButton.activate();
 				}
 			}
+			if( !upDownLeftRightButtonLoaded ) {
+				if( upDownLeftRightButton != undefined ) {
+					upDownLeftRightButtonLoaded = true;
+					upDownLeftRightButton.activate();
+				}
+			}
+			if( !inOutButtonLoaded ) {
+				if( inOutButton != undefined ) {
+					inOutButtonLoaded = true;
+					inOutButton.activate();
+				}
+			}
+			if( animationPaused ) return;
 			var timeToAnimate;
 			frameCount++;
 			if( slowMotion ) {
@@ -643,46 +1094,58 @@
 			} else {
 				timeToAnimate = true;
 			}
-			if( timeToAnimate ) {
-			switch( cameraPositioningMode ) {
-				case "Aerial":
-					// Camera position is controlled by up/down/left/right/in/out controls.
-					// Camera is always looking at ( 0, 0, 0 ).
-					break;
-				case "Follow":
-					// Camera is tethered to the vehicle, being pulled along by it, and looking at the vehicle.
-					// Up/down/left/right/in/out adjusts the camera position relative to the vehicle.
-					// Get the direction of the vehicle's present velocity
-					var vehicleVelocity = new THREE.Vector3();
-					vehicleVelocity.copy( vehicleBody.velocity );
-					var velocityDirection = new THREE.Vector3();
-					velocityDirection.copy( vehicleVelocity.clone().normalize() );
-					// Make a vector with the original tether length and a direction opposite that of the present vehicle velocity
-					var cameraTetherPoint = new THREE.Vector3();
-					cameraTetherPoint.copy( velocityDirection.clone().multiplyScalar( -cameraTetherLength ) );
-					// Add the accumulated manual control camera adjustments to this vector
-					var cameraMoveVector = new THREE.Vector3();
-					cameraMoveVector.addVectors( cameraTetherPoint, cameraFollowDisplacement );
-					// Add the vehicle's position this displacement vector to get the camera's new position in world coordinates 
-					var newCameraPosition = new THREE.Vector3();
-					newCameraPosition.addVectors( vehicleMesh.position, cameraMoveVector );
-					// Update the camera position and "lookAt" parameter
-					camera.position.copy( newCameraPosition );
-					camera.lookAt( vehicleMesh.position );
-					break;
-				case "Orbit":
-					// Camera position is controlled by the THREE.js OrbitControls function.
-					orbitControls.update();
-					break;
-				case "Track":
-					// Camera position is controlled by up/down/left/right/in/out controls.
-					// Camera is always looking at the vehicle.
-					camera.lookAt( vehicleMesh.position );
-					break;
-				default:
-					break;
+			if( ( frameCount % 3 ) == 0 ) {
+				turnOffVisibleTrackPathPoint( currentTrackPathPoint );
+				currentTrackPathPoint++;
+				if( currentTrackPathPoint >= trackPathPoints.length ) { currentTrackPathPoint = 0; }
+				turnOnVisibleTrackPathPoint( currentTrackPathPoint );
 			}
+			if( timeToAnimate ) {
+				buttonPoller();
 				processPhysics();
+				switch( cameraPositioningMode ) {
+					case "Arrows":
+						// Camera position is controlled by up/down/left/right/in/out controls.
+						// Camera is always looking at ( 0, 0, 0 ).
+						break;
+					case "Follow":
+						// Camera is tethered to the robot, being pulled along by it, and looking at the robot.
+						// Up/down/left/right/in/out adjusts the camera position relative to the robot.
+						// Get a vector from the robot location to a point along the robot velocity vector that's behind the robot by a tether length
+						var cameraTetherPoint = new THREE.Vector3();
+						cameraTetherPoint.copy( pointOnRobotVelocityVector( -cameraTetherLength ) );
+						// Add the accumulated manual control camera adjustments to this vector
+						var cameraMoveVector = new THREE.Vector3();
+						cameraMoveVector.addVectors( cameraTetherPoint, cameraFollowDisplacement );
+						// Add the robot's position this displacement vector to get the camera's new position in world coordinates 
+						var newCameraPosition = new THREE.Vector3();
+						newCameraPosition.addVectors( robotMesh.position, cameraMoveVector );
+						// Update the camera position and "lookAt" parameter
+						camera.position.copy( newCameraPosition );
+						camera.lookAt( robotMesh.position );
+						camera.updateProjectionMatrix();
+						break;
+					case "Orbit":
+						// Camera position is controlled by the THREE.js OrbitControls function.
+						orbitControls.update();
+						break;
+					case "Robot":
+						// Camera position is that of the robot and it's looking at a point toward which the robot is moving
+						var cameraLookAtPoint = new THREE.Vector3();
+						cameraLookAtPoint.copy( pointOnRobotVelocityVector( cameraForwardViewDistance ) );
+						camera.position.copy( robotMesh.position );
+						camera.lookAt( cameraLookAtPoint );
+						camera.updateProjectionMatrix();
+						break;
+					case "Track":
+						// Camera position is controlled by up/down/left/right/in/out controls.
+						// Camera is always looking at the robot.
+						camera.lookAt( robotMesh.position );
+						camera.updateProjectionMatrix();
+						break;
+					default:
+						break;
+				}
 				if( outlineBodies )
 					caDebugOutliner.update();
 				else
