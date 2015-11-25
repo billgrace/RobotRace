@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Calculate smooth slope changes</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<style type="text/css">
+	body {
+		margin: 0px;
+		background-color: #fff;
+		overflow: hidden;
+	}
+</style>
+</head>
+<body>
+<script type="text/javascript" src="script/three.min.js"></script>
+<script type="text/javascript" src="script/OrbitControls.js"></script>
+<script type="text/javascript">
+	var scene, camera, renderer, xLight, xMinusLight, yLight, yMinusLight, zLight, zMinusLight, orbitControls;
+	init();
+	function init() {
+		scene = new THREE.Scene();
+
+		camera = new THREE.PerspectiveCamera( 100, 1.3, 1, 20000 );
+		camera.position.set( 100, 30, 300 );
+		camera.lookAt( 100, 100, 0 );
+		renderer = new THREE.WebGLRenderer();
+		document.body.appendChild( renderer.domElement );
+		xLight = new THREE.DirectionalLight( 0xffcc88 );
+		xLight.position.set( 1, 0, 0 ).normalize();
+		scene.add( xLight );
+		xMinusLight = new THREE.DirectionalLight( 0xff88cc );
+		xMinusLight.position.set( -1, 0, 0 ).normalize();
+		scene.add( xMinusLight );
+		yLight = new THREE.DirectionalLight( 0xffffff );
+		yLight.position.set( 0, 1, 0 ).normalize();
+		scene.add( yLight );
+		yMinusLight = new THREE.DirectionalLight( 0x884466 );
+		yMinusLight.position.set( 0, -1, 0 ).normalize();
+		scene.add( yMinusLight );
+		zLight = new THREE.DirectionalLight( 0xcc88ff );
+		zLight.position.set( 0, 0, 1 ).normalize();
+		scene.add( zLight );
+		zMinusLight = new THREE.DirectionalLight( 0x88ccff );
+		zMinusLight.position.set( 0, 0, -1 ).normalize();
+		scene.add( zMinusLight );
+		orbitControls = new THREE.OrbitControls( camera );
+		orbitControls.damping = 0.2;
+		orbitControls.addEventListener( 'change', render );
+		var visibleAxes = new THREE.AxisHelper( 300 );
+		scene.add( visibleAxes );
+
+		// Ground plane mesh
+		var groundPlaneGeometry = new THREE.PlaneBufferGeometry( 10000, 10000 );
+		var groundPlaneMaterial = new THREE.MeshLambertMaterial( { color:0x883311 } );
+		// groundPlaneMaterial = new THREE.MeshLambertMaterial( { map: THREE.ImageUtils.loadTexture( 'image/grass.jpg' ) } );
+		var groundPlaneMesh = new THREE.Mesh( groundPlaneGeometry, groundPlaneMaterial );
+		groundPlaneMesh.rotation.set( - Math.PI / 2, 0, 0 );
+		groundPlaneMesh.position.set( 0, -30, 0 );
+		scene.add( groundPlaneMesh );
+
+
+		var sectionStartX = 0, sectionFinishX = 200, sectionLength = sectionFinishX - sectionStartX;
+		var sectionStartY = 100, sectionFinishY = 125;
+		var xStart = sectionStartX, xFinish = sectionFinishX;
+		var yStart = sectionStartY, yFinish = sectionFinishY;
+		var pStart = 50, pFinish = 30;
+		var loopLimit = 0, finished = false, overFlowed = false;
+		var length, elevation, pCenter;
+		var pDeltaS, pDeltaF;
+		var startPoints = [];
+		var finishPoints = [];
+		while( !finished ) {
+			length = xFinish - xStart;
+			elevation = yFinish - yStart;
+			pCenter = Math.atan( elevation / length ) * 180 / Math.PI;
+			pDeltaS = Math.abs( pCenter - pStart );
+			pDeltaF = Math.abs( pCenter - pFinish );
+			if( ( pDeltaS < 1.0 ) && ( pDeltaF < 1.0 ) ) {
+				finished = true;
+			} else {
+				if( pDeltaS >= 1.0 ) {
+					if( pCenter > pStart ) pStart += 1.0; else pStart -= 1.0;
+					xStart += 1.0;
+					yStart += Math.tan( Math.PI * pStart / 180 );
+					startPoints.push( new THREE.Vector3( xStart, yStart, 0 ) );
+				}
+				if( pDeltaF >= 1.0 ) {
+					if( pCenter > pFinish ) pFinish += 1.0; else pFinish -= 1.0;
+					xFinish -= 1.0;
+					yFinish -= Math.tan( Math.PI * pFinish / 180 );
+					finishPoints.push( new THREE.Vector3( xFinish, yFinish, 0 ) );
+				}
+			}
+			loopLimit++;
+			if( loopLimit > 50 ) {
+				overFlowed = true;
+				finished = true;
+			}
+		}
+
+		var lineMaterial = new THREE.LineBasicMaterial( { color:0xff0000 } );
+		var lineGeometry = new THREE.Geometry();
+		var nextX, nextY, centerDeltaY;
+		lineGeometry.vertices.push( new THREE.Vector3( sectionStartX, sectionStartY, 0 ) );
+		for( var i = 0; i < startPoints.length; i++ ) {
+			lineGeometry.vertices.push( new THREE.Vector3().copy( startPoints[ i ] ) );
+			nextX = startPoints[ i ].x;
+			nextY = startPoints[ i ].y;
+		}
+		centerDeltaY = ( ( finishPoints[ ( finishPoints.length - 1 ) ].y - startPoints[ ( startPoints.length - 1 ) ].y ) / ( sectionLength - startPoints.length - finishPoints.length ) );
+		for( var i = 0; i < ( sectionLength - startPoints.length - finishPoints.length ); i++ ) {
+			nextX += 1.0;
+			nextY += centerDeltaY;
+			lineGeometry.vertices.push( new THREE.Vector3( nextX, nextY, 0 ) );
+		}
+		for( var i = finishPoints.length - 1; i >= 0; i-- ) {
+			lineGeometry.vertices.push( new THREE.Vector3().copy( finishPoints[ i ] ) );
+		}
+		var lineMesh = new THREE.Line( lineGeometry, lineMaterial );
+		scene.add( lineMesh );
+
+		animate();
+	}
+	function render() {
+		renderer.setSize( window.innerWidth, window.innerHeight );
+		camera.updateProjectionMatrix();
+		renderer.render( scene, camera );
+	}
+	function animate() {
+		requestAnimationFrame( animate );
+		render();
+	}
+</script>

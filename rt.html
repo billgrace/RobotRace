@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Calculate right turn piece</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<style type="text/css">
+	body {
+		margin: 0px;
+		background-color: #fff;
+		overflow: hidden;
+	}
+</style>
+</head>
+<body>
+<script type="text/javascript" src="script/three.min.js"></script>
+<script type="text/javascript" src="script/OrbitControls.js"></script>
+<script type="text/javascript" src="script/cannon.min.js"></script>
+<script type="text/javascript" src="script/CannonDebugRenderer.js"></script>
+<script type="text/javascript">
+	var scene, camera, renderer, xLight, xMinusLight, yLight, yMinusLight, zLight, zMinusLight, orbitControls;
+	var world, timeStep = 1/60, caDebugOutliner;
+	var tickCount = 0;
+	var trackMeshList = [];
+	var trackBodyList = [];
+	init();
+	function init() {
+		scene = new THREE.Scene();
+		world = new CANNON.World();
+		world.gravity.set( 0, -9.8, 0 );
+		world.broadphase = new CANNON.NaiveBroadphase();
+
+		camera = new THREE.PerspectiveCamera( 100, 1.3, 1, 20000 );
+		camera.position.set( 100, 30, 300 );
+		camera.lookAt( 100, 100, 0 );
+		renderer = new THREE.WebGLRenderer();
+		document.body.appendChild( renderer.domElement );
+		xLight = new THREE.DirectionalLight( 0xffcc88 );
+		xLight.position.set( 1, 0, 0 ).normalize();
+		scene.add( xLight );
+		xMinusLight = new THREE.DirectionalLight( 0xff88cc );
+		xMinusLight.position.set( -1, 0, 0 ).normalize();
+		scene.add( xMinusLight );
+		yLight = new THREE.DirectionalLight( 0xffffff );
+		yLight.position.set( 0, 1, 0 ).normalize();
+		scene.add( yLight );
+		yMinusLight = new THREE.DirectionalLight( 0x884466 );
+		yMinusLight.position.set( 0, -1, 0 ).normalize();
+		scene.add( yMinusLight );
+		zLight = new THREE.DirectionalLight( 0xcc88ff );
+		zLight.position.set( 0, 0, 1 ).normalize();
+		scene.add( zLight );
+		zMinusLight = new THREE.DirectionalLight( 0x88ccff );
+		zMinusLight.position.set( 0, 0, -1 ).normalize();
+		scene.add( zMinusLight );
+		orbitControls = new THREE.OrbitControls( camera );
+		orbitControls.damping = 0.2;
+		orbitControls.addEventListener( 'change', render );
+		caDebugOutliner = new THREE.CannonDebugRenderer( scene, world );
+		var visibleAxes = new THREE.AxisHelper( 300 );
+		scene.add( visibleAxes );
+
+		// Ground plane mesh
+		var groundPlaneGeometry = new THREE.PlaneBufferGeometry( 10000, 10000 );
+		var groundPlaneMaterial = new THREE.MeshLambertMaterial( { color:0x883311 } );
+		var groundPlaneMesh = new THREE.Mesh( groundPlaneGeometry, groundPlaneMaterial );
+		groundPlaneMesh.rotation.set( - Math.PI / 2, 0, 0 );
+		groundPlaneMesh.position.set( 0, -30, 0 );
+		scene.add( groundPlaneMesh );
+
+
+		var trackWidth = 50, trackThickness = 20;
+		var xAxisDirection = new THREE.Vector3( 1, 0, 0 );
+		var minusXAxisDirection = new THREE.Vector3( 0, 0, -1 );
+		var yAxisDirection = new THREE.Vector3( 0, 1, 0 );
+		var minusYAxisDirection = new THREE.Vector3( 0, -1, 0 );
+		var zAxisDirection = new THREE.Vector3( 0, 0, 1 );
+		var minusZAxisDirection = new THREE.Vector3( 0, -0, -1 );
+		var pointSize = 1;
+		var pathStartElevation = 20;
+		var pathFinishElevation = 10;
+		var pathStartPoint = new THREE.Vector3( 10, pathStartElevation, 10 );
+		var pathStartDirection = new THREE.Vector3( 1, 0, 1 );	// path start direction must always have y = 0 to keep elevations separate from x,z locations and directions
+		var pathStartPointColor = new THREE.Color( 1.0, 0, 0 );	// red path start point
+		var curveRadius = 100; // millimeters
+		// var curveAngle = 1.0; // degrees
+		var curveAngle = 10.0 * ( Math.PI / 180 ); // radians
+		var pathFinishPoint = new THREE.Vector3();
+		var pathFinishDirection = new THREE.Vector3();
+		var pathFinishPointColor = new THREE.Color( 1.0, 0.5, 0.3 );	// orange path finish point
+		var pathMidpointDirection = new THREE. Vector3();
+		var centerPoint = new THREE.Vector3();
+		var centerPointColor = new THREE.Color( 1.0, 1.0, 0 );	// yellow center point
+		var numberOfPoints = 13;
+		var pointPositions = new Float32Array( numberOfPoints * 3 );
+		var pointColors = new Float32Array( numberOfPoints * 3 );
+		var vertexPointColor = new THREE.Color( 1, 1, 1 );	// white vertex points
+		var numberOfLines = 3;
+		var startSpokeDirection = new THREE.Vector3();
+		var middleSpokeDirection = new THREE.Vector3();
+		var finishSpokeDirection = new THREE.Vector3();
+		var middleSpokeEndpoint = new THREE.Vector3();
+		var spokeWorkingVector = new THREE.Vector3();
+		var vertex0 = new THREE.Vector3(), vertex1 = new THREE.Vector3(), vertex2 = new THREE.Vector3(), vertex3 = new THREE.Vector3(), vertex4 = new THREE.Vector3();
+		var vertex5 = new THREE.Vector3(), vertex6 = new THREE.Vector3(), vertex7 = new THREE.Vector3(), vertex8 = new THREE.Vector3(), vertex9 = new THREE.Vector3();
+		var trackPieceBody;
+		var trackPieceBodyCenterPoint = new THREE.Vector3();
+		// path start point - location is given
+		pointPositions[ 0 ] = pathStartPoint.x;
+		pointPositions[ 1 ] = pathStartPoint.y;
+		pointPositions[ 2 ] = pathStartPoint.z;
+		pointColors[ 0 ] = pathStartPointColor.r;
+		pointColors[ 1 ] = pathStartPointColor.g;
+		pointColors[ 2 ] = pathStartPointColor.b;
+		// center point
+		// - make a vector from the start point to the center point
+		var centerOffsetVector = new THREE.Vector3();
+		centerOffsetVector.copy( pathStartDirection );	// start with the path start direction
+		centerOffsetVector.normalize();	// make it one unit long
+		centerOffsetVector.applyAxisAngle( yAxisDirection, -Math.PI / 2 );	// rotate it 90 degrees clockwise = direction from path start point to center point
+		centerOffsetVector.multiplyScalar( curveRadius ); // give it a length equal to the distance from the center point to all points on the path
+		centerPoint.addVectors( pathStartPoint, centerOffsetVector );	// set the center point at the sum of the start point location vector and the offset we just made
+		// path curve center point
+		pointPositions[ 3 ] = centerPoint.x;
+		pointPositions[ 4 ] = centerPoint.y;
+		pointPositions[ 5 ] = centerPoint.z;
+		pointColors[ 3 ] = centerPointColor.r;
+		pointColors[ 4 ] = centerPointColor.g;
+		pointColors[ 5 ] = centerPointColor.b;
+		// path finish point - rotate the path start point around the curve center point by the curve angular extent
+		// - "startSpoke" is a radial from the curve center point to Vertices 1 and 6, the path start point and vertices 0 and 5
+		// - "middleSpoke" is a radial from the curve center point to Vertices 4 and 9
+		// - "finishSpoke" is a radial from the curve center point to Vertices 2 and 7, the path finish point and vertices 3 and 8
+		// - the direction of startSpoke is the opposite of the centerOffsetVector
+		// - the direction of finishSpoke is startSpoke rotated by curveAngle around the (-)Y axis
+		// - the direction of middleSpoke is startSpoke rotated by 1/2 curveAngle around the (-)Y axis
+		startSpokeDirection.copy( centerOffsetVector );	// get a copy of the vector from the path start point to the curve center point
+		startSpokeDirection.normalize();	// normalize it to a length of 1
+		startSpokeDirection.multiplyScalar( -1.0 );	// reverse it so it's pointing from the center point to the path start point
+		middleSpokeDirection.copy( startSpokeDirection );	// copy the start spoke direction to the middle spoke
+		middleSpokeDirection.applyAxisAngle( minusYAxisDirection, ( curveAngle / 2 ) );	// rotate it clockwise through half the curve angle
+		finishSpokeDirection.copy( startSpokeDirection );	// copy the start spoke direction to the finish spoke
+		finishSpokeDirection.applyAxisAngle( minusYAxisDirection, curveAngle );	// rotate it clockwise through the curve angle
+		// end point for middle spoke (there's no vertex at that locaiton....)
+		spokeWorkingVector.copy( middleSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( Math.cos( curveAngle / 2 ) * ( curveRadius - ( trackWidth / 2 ) ) );	// middle spoke direction with length to get from center to midpoint between vertex 1 and vertex 2
+		middleSpokeEndpoint.addVectors( centerPoint, spokeWorkingVector );
+		// path finish point
+		spokeWorkingVector.copy( finishSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( curveRadius );	// finish spoke direction with length = curve radius
+		pathFinishPoint.addVectors( centerPoint, spokeWorkingVector );
+		pathFinishPoint.y = pathFinishElevation;
+		pointPositions[ 6 ] = pathFinishPoint.x;
+		pointPositions[ 7 ] = pathFinishPoint.y;
+		pointPositions[ 8 ] = pathFinishPoint.z;
+		pointColors[ 6 ] = pathFinishPointColor.r;
+		pointColors[ 7 ] = pathFinishPointColor.g;
+		pointColors[ 8 ] = pathFinishPointColor.b;
+		// center point of body making physics track surface
+		spokeWorkingVector.copy( middleSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( Math.cos( curveAngle / 2 ) * ( curveRadius ) );	// middle spoke direction with length to get from center to midpoint between path start and finish points
+		trackPieceBodyCenterPoint.addVectors( centerPoint, spokeWorkingVector );
+		trackPieceBodyCenterPoint.y = ( ( ( pathStartElevation + pathFinishElevation ) / 2 ) - ( trackThickness / 2 ) );
+		// vertex 0
+		spokeWorkingVector.copy( startSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( curveRadius + ( trackWidth / 2 ) );	// start spoke direction with length to get from center to vertex 0
+		vertex0.addVectors( centerPoint, spokeWorkingVector );
+		vertex0.y = pathStartElevation;
+		pointPositions[ 9 ] = vertex0.x;
+		pointPositions[ 10 ] = vertex0.y;
+		pointPositions[ 11 ] = vertex0.z;
+		pointColors[ 9 ] = vertexPointColor.r;
+		pointColors[ 10 ] = vertexPointColor.g;
+		pointColors[ 11 ] = vertexPointColor.b;
+		// vertex 1
+		spokeWorkingVector.copy( startSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( curveRadius - ( trackWidth / 2 ) );	// start spoke direction with length to get from center to vertex 1
+		vertex1.addVectors( centerPoint, spokeWorkingVector );
+		vertex1.y = pathStartElevation;
+		pointPositions[ 12 ] = vertex1.x;
+		pointPositions[ 13 ] = vertex1.y;
+		pointPositions[ 14 ] = vertex1.z;
+		pointColors[ 12 ] = vertexPointColor.r;
+		pointColors[ 13 ] = vertexPointColor.g;
+		pointColors[ 14 ] = vertexPointColor.b;
+		// vertex 2
+		spokeWorkingVector.copy( finishSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( curveRadius - ( trackWidth / 2 ) );	// finish spoke direction with length to get from center to vertex 2
+		vertex2.addVectors( centerPoint, spokeWorkingVector );
+		vertex2.y = pathFinishElevation;
+		pointPositions[ 15 ] = vertex2.x;
+		pointPositions[ 16 ] = vertex2.y;
+		pointPositions[ 17 ] = vertex2.z;
+		pointColors[ 15 ] = vertexPointColor.r;
+		pointColors[ 16 ] = vertexPointColor.g;
+		pointColors[ 17 ] = vertexPointColor.b;
+		// vertex 3
+		spokeWorkingVector.copy( finishSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( curveRadius + ( trackWidth / 2 ) );	// finish spoke direction with length to get from center to vertex 3
+		vertex3.addVectors( centerPoint, spokeWorkingVector );
+		vertex3.y = pathFinishElevation;
+		pointPositions[ 18 ] = vertex3.x;
+		pointPositions[ 19 ] = vertex3.y;
+		pointPositions[ 20 ] = vertex3.z;
+		pointColors[ 18 ] = vertexPointColor.r;
+		pointColors[ 19 ] = vertexPointColor.g;
+		pointColors[ 20 ] = vertexPointColor.b;
+		// vertex 4
+		spokeWorkingVector.copy( middleSpokeDirection );
+		spokeWorkingVector.normalize();
+		spokeWorkingVector.multiplyScalar( Math.cos( curveAngle / 2 ) * ( curveRadius + ( trackWidth / 2 ) ) );	// middle spoke direction with length to get from center to vertex 4
+		vertex4.addVectors( centerPoint, spokeWorkingVector );
+		vertex4.y = ( ( pathStartElevation + pathFinishElevation ) / 2 );
+		pointPositions[ 21 ] = vertex4.x;
+		pointPositions[ 22 ] = vertex4.y;
+		pointPositions[ 23 ] = vertex4.z;
+		pointColors[ 21 ] = vertexPointColor.r;
+		pointColors[ 22 ] = vertexPointColor.g;
+		pointColors[ 23 ] = vertexPointColor.b;
+		// vertices 5 - 9 are directly below vertices 0 - 4 by a distance of the track thickness
+		vertex5.copy( vertex0 );
+		vertex5.y -= trackThickness;
+		pointPositions[ 24 ] = vertex5.x;
+		pointPositions[ 25 ] = vertex5.y;
+		pointPositions[ 26 ] = vertex5.z;
+		pointColors[ 24 ] = vertexPointColor.r;
+		pointColors[ 25 ] = vertexPointColor.g;
+		pointColors[ 26 ] = vertexPointColor.b;
+		vertex6.copy( vertex1 );
+		vertex6.y -= trackThickness;
+		pointPositions[ 27 ] = vertex6.x;
+		pointPositions[ 28 ] = vertex6.y;
+		pointPositions[ 29 ] = vertex6.z;
+		pointColors[ 27 ] = vertexPointColor.r;
+		pointColors[ 28 ] = vertexPointColor.g;
+		pointColors[ 29 ] = vertexPointColor.b;
+		vertex7.copy( vertex2 );
+		vertex7.y -= trackThickness;
+		pointPositions[ 30 ] = vertex7.x;
+		pointPositions[ 31 ] = vertex7.y;
+		pointPositions[ 32 ] = vertex7.z;
+		pointColors[ 30 ] = vertexPointColor.r;
+		pointColors[ 31 ] = vertexPointColor.g;
+		pointColors[ 32 ] = vertexPointColor.b;
+		vertex8.copy( vertex3 );
+		vertex8.y -= trackThickness;
+		pointPositions[ 33 ] = vertex8.x;
+		pointPositions[ 34 ] = vertex8.y;
+		pointPositions[ 35 ] = vertex8.z;
+		pointColors[ 33 ] = vertexPointColor.r;
+		pointColors[ 34 ] = vertexPointColor.g;
+		pointColors[ 35 ] = vertexPointColor.b;
+		vertex9.copy( vertex4 );
+		vertex9.y -= trackThickness;
+		pointPositions[ 36 ] = vertex9.x;
+		pointPositions[ 37 ] = vertex9.y;
+		pointPositions[ 38 ] = vertex9.z;
+		pointColors[ 36 ] = vertexPointColor.r;
+		pointColors[ 37 ] = vertexPointColor.g;
+		pointColors[ 38 ] = vertexPointColor.b;
+
+
+		var pointGeometry = new THREE.BufferGeometry();
+		pointGeometry.addAttribute( 'position', new THREE.BufferAttribute( pointPositions, 3 ) );
+		pointGeometry.addAttribute( 'color', new THREE.BufferAttribute( pointColors, 3 ) );
+		pointGeometry.computeBoundingSphere();
+		var pointMaterial = new THREE.PointCloudMaterial( { size: pointSize, vertexColors: THREE.VertexColors } );
+		var pointParticleSystem = new THREE.PointCloud( pointGeometry, pointMaterial );
+		scene.add( pointParticleSystem );
+
+		var startSpokeGeometry = new THREE.Geometry();
+		var startSpokeMaterial = new THREE.LineBasicMaterial( { color:0x00ff00 } );
+		startSpokeGeometry.vertices.push( centerPoint );
+		startSpokeGeometry.vertices.push( vertex1 );
+		var startSpokeMesh = new THREE.Line( startSpokeGeometry, startSpokeMaterial );
+		scene.add( startSpokeMesh );
+		var middleSpokeGeometry = new THREE.Geometry();
+		var middleSpokeMaterial = new THREE.LineBasicMaterial( { color:0x0000ff } );
+		middleSpokeGeometry.vertices.push( centerPoint );
+		middleSpokeGeometry.vertices.push( middleSpokeEndpoint );
+		var middleSpokeMesh = new THREE.Line( middleSpokeGeometry, middleSpokeMaterial );
+		scene.add( middleSpokeMesh );
+		var finishSpokeGeometry = new THREE.Geometry();
+		var finishSpokeMaterial = new THREE.LineBasicMaterial( { color:0xff0000 } );
+		finishSpokeGeometry.vertices.push( centerPoint );
+		finishSpokeGeometry.vertices.push( vertex2 );
+		var finishSpokeMesh = new THREE.Line( finishSpokeGeometry, finishSpokeMaterial );
+		scene.add( finishSpokeMesh );
+
+		var trackPieceGeometry = new THREE.Geometry();
+		trackPieceGeometry.vertices.push( vertex0, vertex1, vertex2, vertex3, vertex4, vertex5, vertex6, vertex7, vertex8, vertex9 );
+		trackPieceGeometry.faces.push(
+			new THREE.Face3( 0, 1, 4 ),
+			new THREE.Face3( 1, 2, 4 ),
+			new THREE.Face3( 2, 3, 4 ),
+			new THREE.Face3( 5, 9, 6 ),
+			new THREE.Face3( 6, 9, 7 ),
+			new THREE.Face3( 7, 9, 8 ),
+			new THREE.Face3( 1, 6, 7 ),
+			new THREE.Face3( 1, 7, 2 ),
+			new THREE.Face3( 0, 5, 6 ),
+			new THREE.Face3( 0, 6, 1 ),
+			new THREE.Face3( 5, 3, 8 ),
+			new THREE.Face3( 5, 0, 3 ),
+			new THREE.Face3( 2, 8, 3 ),
+			new THREE.Face3( 2, 7, 8 )
+		);
+		trackPieceGeometry.computeBoundingSphere();
+		trackPieceGeometry.computeFaceNormals();
+		var trackPieceMesh = new THREE.Mesh( trackPieceGeometry, new THREE.MeshLambertMaterial( { color:0x8833ff } ) );
+		scene.add( trackPieceMesh );
+		trackMeshList.push( trackPieceMesh );
+
+		var vert0 = new CANNON.Vec3(), vert1 = new CANNON.Vec3(), vert2 = new CANNON.Vec3(), vert3 = new CANNON.Vec3(), vert4 = new CANNON.Vec3();
+		var vert5 = new CANNON.Vec3(), vert6 = new CANNON.Vec3(), vert7 = new CANNON.Vec3(), vert8 = new CANNON.Vec3(), vert9 = new CANNON.Vec3();
+		vert0.copy( vertex0 );
+		vert1.copy( vertex1 );
+		vert2.copy( vertex2 );
+		vert3.copy( vertex3 );
+		vert4.copy( vertex4 );
+		vert5.copy( vertex5 );
+		vert6.copy( vertex6 );
+		vert7.copy( vertex7 );
+		vert8.copy( vertex8 );
+		vert9.copy( vertex9 );
+		var trackPieceBodyPoints = [ vert0, vert1, vert2, vert3, vert4, vert5, vert6, vert7, vert8, vert9 ];
+		var trackPieceBodyFaces = [
+			[ 0, 1, 4 ],
+			[ 1, 2, 4 ],
+			[ 2, 3, 4 ],
+			[ 5, 9, 6 ],
+			[ 6, 9, 7 ],
+			[ 7, 9, 8 ],
+			[ 1, 6, 7 ],
+			[ 1, 7, 2 ],
+			[ 0, 5, 6 ],
+			[ 0, 6, 1 ],
+			[ 5, 3, 8 ],
+			[ 5, 0, 3 ],
+			[ 2, 8, 3 ],
+			[ 2, 7, 8 ]
+		];
+		trackBodyMaterial = new CANNON.Material( "trackBodyMaterial" );
+		trackPieceBody = new CANNON.Body( { material: trackBodyMaterial, mass: 0 } );
+		var trackPieceBodyShape = new CANNON.ConvexPolyhedron( trackPieceBodyPoints, trackPieceBodyFaces );
+		trackPieceBodyShape.computeNormals();
+		trackPieceBodyShape.updateBoundingSphereRadius();
+		trackPieceBody.addShape( trackPieceBodyShape );
+		world.add( trackPieceBody );
+		trackBodyList.push( trackPieceBody );
+
+		// a bouncy test ball
+		var testBallMaterial = new CANNON.Material( "testBallMaterial" );
+		var testBallBody = new CANNON.Body( {material: testBallMaterial, mass: 10 } );
+		testBallBody.addShape( new CANNON.Sphere( 10 ) );
+		testBallBody.position.copy( trackPieceBodyCenterPoint );
+		testBallBody.position.y += 5100;
+		world.add( testBallBody );
+
+		var ballToTrackContactMaterial = new CANNON.ContactMaterial( testBallMaterial, trackBodyMaterial, { friction:0.1, restitution: 1.0 } );
+		world.addContactMaterial( ballToTrackContactMaterial );
+
+		// var worldBoxBody = new CANNON.Body( { material: trackBodyMaterial, mass: 0 } );
+		// worldBoxBody.addShape( new CANNON.Box( new CANNON.Vec3( 5000, 5000, 5000 ) ) );
+		// world.add( worldBoxBody );
+
+		animate();
+	}
+	function processPhysics() {
+		world.step( timeStep );
+	}
+	function render() {
+		renderer.setSize( window.innerWidth, window.innerHeight );
+		camera.updateProjectionMatrix();
+		renderer.render( scene, camera );
+	}
+	function animate() {
+		requestAnimationFrame( animate );
+		// tickCount++;
+		// if( ( tickCount % 100 ) == 0 ) {
+		// 	for( var i = 0; i < trackMeshList.length; i++ ) {
+		// 		scene.remove( trackMeshList[ i ] );
+		// 	}
+		// 	for( var i = 0; i < trackBodyList.length; i++ ) {
+		// 		world.remove( trackBodyList[ i ] );
+		// 	}
+		// }
+		// if( ( tickCount % 100 ) == 50 ) {
+		// 	for( var i = 0; i < trackMeshList.length; i++ ) {
+		// 		scene.add( trackMeshList[ i ] );
+		// 	}
+		// 	for( var i = 0; i < trackBodyList.length; i++ ) {
+		// 		world.add( trackBodyList[ i ] );
+		// 	}
+		// }
+		processPhysics();
+		caDebugOutliner.update();
+		render();
+	}
+</script>
