@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<!-- Make a simple cannon.js/three.js box and check the cannon face/vertex issues -->
+<html>
+<head>
+	<title>Robot Race Track</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<style type="text/css">
+		body {
+			margin: 0px;
+			background-color: #fff;
+			overflow: hidden;
+		}
+	</style>
+</head>
+<body>
+	<script type="text/javascript" src="script/three.min.js"></script>
+	<script type="text/javascript" src="script/OrbitControls.js"></script>
+	<script type="text/javascript" src="script/stats.min.js"></script>
+	<script type="text/javascript" src="script/helvetiker_regular.typeface.js"></script>
+	<script type="text/javascript" src="script/cannon.min.js"></script>
+	<script type="text/javascript" src="script/CannonDebugRenderer.js"></script>
+	<script type="text/javascript" src="script/showVectors.js"></script>
+	<script type="text/javascript" src="script/controls.js"></script>
+	<script type="text/javascript" src="script/rrTrack.js"></script>
+
+	<script type="text/javascript">
+		var vector0, vector1, vector2, vector3, vector4, vector5, vector6, vector7;
+		var pieceMeshGeometry, pieceMesh;
+
+		var vec0, vec1, vec2, vec3, vec4, vec5, vec6, vec7;
+		var pieceBodyPoints, pieceBodyFaces;
+		var pieceBodyMaterial, pieceBodyShape, pieceBody;
+
+		var boxMesh, boxBody;
+
+		var visibleAxes;
+		var camera, renderer, scene, xLight, yLight, zLight;
+		var orbitControls;
+		var world, timeStep = 1/60, caDebugOutliner;
+		var robotBody, robotMesh;
+		var stats;
+		init();
+		function init() {
+			scene = new THREE.Scene();
+			world = new CANNON.World();
+			world.gravity.set( 0, -9.8, 0 );
+			world.broadphase = new CANNON.NaiveBroadphase();
+			camera = new THREE.PerspectiveCamera( 80, 1.3, 1, 10000 );
+			camera.position.set( 200, 100, 100 );
+			renderer = new THREE.WebGLRenderer();
+			renderer.domElement.id = "rendererDomElement";
+			document.body.appendChild( renderer.domElement );
+			xLight = new THREE.DirectionalLight( 0xffffff );
+			xLight.position.set( 1, 0, 0 ).normalize();
+			scene.add( xLight );
+			xMinusLight = new THREE.DirectionalLight( 0xffffff );
+			xMinusLight.position.set( -1, 0, 0 ).normalize();
+			scene.add( xMinusLight );
+			yLight = new THREE.DirectionalLight( 0xffffff );
+			yLight.position.set( 0, 1, 0 ).normalize();
+			scene.add( yLight );
+			yMinusLight = new THREE.DirectionalLight( 0xffffff );
+			yMinusLight.position.set( 0, -1, 0 ).normalize();
+			scene.add( yMinusLight );
+			zLight = new THREE.DirectionalLight( 0xffffff );
+			zLight.position.set( 0, 0, 1 ).normalize();
+			scene.add( zLight );
+			zMinusLight = new THREE.DirectionalLight( 0xffffff );
+			zMinusLight.position.set( 0, 0, -1 ).normalize();
+			scene.add( zMinusLight );
+			caDebugOutliner = new THREE.CannonDebugRenderer( scene, world );
+			orbitControls = new THREE.OrbitControls( camera );
+			orbitControls.damping = 0.2;
+			orbitControls.addEventListener( 'change', render );
+			visibleAxes = new THREE.AxisHelper( 300 );
+			scene.add( visibleAxes );
+
+			var pieceCenterX = 300;
+			var pieceCenterY = 0;
+			var pieceCenterZ = 0;
+
+			var boxCenterX = 0;
+			var boxCenterY = 300;
+			var boxCenterZ = 0;
+
+			boxMesh = new THREE.Mesh( new THREE.BoxGeometry( 200, 200, 200 ), new THREE.MeshLambertMaterial( { color:0x0000ff } ) );
+			boxMesh.position.set( boxCenterX, boxCenterY, boxCenterZ );
+			scene.add( boxMesh );
+			var boxBodyMaterial = new CANNON.Material( "boxBodyMaterial" );
+			boxBody = new CANNON.Body( { material: boxBodyMaterial, mass: 0 } );
+			boxBody.addShape( new CANNON.Box( new CANNON.Vec3(  100, 100, 100 ) ) );
+			boxBody.position.set( boxCenterX, boxCenterY, boxCenterZ );
+			world.add( boxBody );
+
+			vector0 = new THREE.Vector3( -100, 100, 100 );
+			vector1 = new THREE.Vector3( 100, 100, 100 );
+			vector2 = new THREE.Vector3( 100, 100, -100 );
+			vector3 = new THREE.Vector3( -100, 100, -100 );
+			vector4 = new THREE.Vector3( -100, -100, 100 );
+			vector5 = new THREE.Vector3( 100, -100, 100 );
+			vector6 = new THREE.Vector3( 100, -100, -100 );
+			vector7 = new THREE.Vector3( -100, -100, -100 );
+			pieceMeshGeometry = new THREE.Geometry();
+			pieceMeshGeometry.vertices.push(
+				vector0,
+				vector1,
+				vector2,
+				vector3,
+				vector4,
+				vector5,
+				vector6,
+				vector7
+			);
+			pieceMeshGeometry.faces.push(
+					new THREE.Face3( 0, 2, 3 ),
+					new THREE.Face3( 0, 1, 2 ),
+					new THREE.Face3( 4, 7, 6 ),
+					new THREE.Face3( 4, 6, 5 ),
+					new THREE.Face3( 0, 5, 1 ),
+					new THREE.Face3( 0, 4, 5 ),
+					new THREE.Face3( 3, 6, 7 ),
+					new THREE.Face3( 3, 2, 6 )
+			);
+			pieceMeshGeometry.computeBoundingSphere();
+			pieceMeshGeometry.computeFaceNormals();
+			pieceMesh = new THREE.Mesh( pieceMeshGeometry, new THREE.MeshLambertMaterial( { color:0xff8844 } ) );
+			pieceMesh.position.set( pieceCenterX, pieceCenterY, pieceCenterZ );
+			scene.add( pieceMesh );
+
+			vec0 = new CANNON.Vec3();
+			vec1 = new CANNON.Vec3();
+			vec2 = new CANNON.Vec3();
+			vec3 = new CANNON.Vec3();
+			vec4 = new CANNON.Vec3();
+			vec5 = new CANNON.Vec3();
+			vec6 = new CANNON.Vec3();
+			vec7 = new CANNON.Vec3();
+			vec0.copy( vector0 );
+			vec1.copy( vector1 );
+			vec2.copy( vector2 );
+			vec3.copy( vector3 );
+			vec4.copy( vector4 );
+			vec5.copy( vector5 );
+			vec6.copy( vector6 );
+			vec7.copy( vector7 );
+			var pieceBodyPoints = [ vec0, vec1, vec2, vec3, vec4, vec5, vec6, vec7 ];
+			var pieceBodyFaces = [
+				[ 0, 3, 7, 4 ],
+				[ 1, 5, 6, 2 ],
+				[ 2, 6, 7, 3 ],
+				[ 0, 4, 5, 1 ],
+				[ 0, 1, 2, 3 ],
+				[ 4, 7, 6, 5 ]
+			];
+			pieceBodyMaterial = new CANNON.Material( "pieceBodyMaterial" );
+			pieceBody = new CANNON.Body( { material: pieceBodyMaterial, mass: 0 } );
+			pieceBodyShape = new CANNON.ConvexPolyhedron( pieceBodyPoints, pieceBodyFaces );
+			pieceBody.position.set( pieceCenterX, pieceCenterY, pieceCenterZ );
+			pieceBodyShape.computeNormals();
+			pieceBodyShape.updateBoundingSphereRadius();
+			pieceBody.addShape( pieceBodyShape );
+			world.add( pieceBody );
+			animate();
+		}
+
+		function processPhysics() {
+			world.step( timeStep );
+		}
+
+		function render() {
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			camera.updateProjectionMatrix();
+			renderer.render( scene, camera );
+		}
+
+		function animate() {
+			requestAnimationFrame( animate );
+			processPhysics();
+			caDebugOutliner.update();
+			render();
+		}
+	</script>
+</body>
+</html>

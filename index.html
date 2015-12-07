@@ -16,21 +16,12 @@
 	<script type="text/javascript" src="script/three.min.js"></script>
 	<script type="text/javascript" src="script/OrbitControls.js"></script>
 	<script type="text/javascript" src="script/stats.min.js"></script>
-	<script type="text/javascript" src="script/STLLoader.js"></script>
 	<script type="text/javascript" src="script/cannon.min.js"></script>
 	<script type="text/javascript" src="script/CannonDebugRenderer.js"></script>
 	<script type="text/javascript" src="script/showVectors.js"></script>
 	<script type="text/javascript" src="script/controls.js"></script>
-
-	<!-- variables shared with scad/stl -->
-	<script type="text/javascript">
-		var trackInnerRadius;
-		var trackWidth;
-		var trackThickness;
-		var trackStraightStretchLength;
-	</script>
-	<script type="text/javascript" src="shape/rrTrack.inc"></script>
-
+	<script type="text/javascript" src="script/rrTrack.js"></script>
+	<script type="text/javascript" src="script/rrHorizon.js"></script>
 	<script type="text/javascript">
 
 		var trackPathPoints = [], currentTrackPathPoint;
@@ -39,8 +30,9 @@
 		var trackPathCurrentDirection = new THREE.Vector3(), trackPathNextDirection = new THREE.Vector3();
 		var trackPathCurrentDisplacement = new THREE.Vector3();
 		var trackPathPointsPerSection = 20;
-		var trackPathPointVisibleRadius = 15;
+		var trackPathPointVisibleRadius = 3.0;
 		var trackPathPointPhysicalRadius = 0.01;
+		var trackPathPointsAreVisible;
 
 		var animationPaused;
 
@@ -58,8 +50,8 @@
 		var panelSelectChoiceColor = "Orange";
 		var panelSelectBorderStyle = "solid", panelSelectBorderWidth = 3, panelSelectBorderColor = "#8CC", panelSelectBorderRadius = "10px";
 		var panelSelectFontSize = "15px";
-		var pointOfViewPanelHeight = ( ( ( 6 * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
-		var shovelPanelHeight = ( ( ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
+		var numberOfPointOfViewPanelEntries = 5;
+		var pointOfViewPanelHeight = ( ( ( ( numberOfPointOfViewPanelEntries + 1 ) * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
 		var pointOfViewPanelDiv, pointOfViewButton, pointOfViewButtonLoaded;
 		var pointOfViewTitleDiv;
 		var pointOfViewSelectArialDiv;
@@ -70,6 +62,8 @@
 		var pointOfViewClosePanelButton;
 		var pointOfViewPanelIsOpen = false;
 
+		var numberOfShovelPanelEntries = 3;
+		var shovelPanelHeight = ( ( ( ( numberOfShovelPanelEntries + 1 ) * ( panelBarHeight + panelBarVerticalMargin ) ) + ( panelCloseButtonHeight + panelBarVerticalMargin ) + panelBarVerticalMargin ) | 0 );
 		var shovelPanelDiv, shovelButton, shovelButtonLoaded;
 		var shovelToggleCannonDiv;
 		var shovelToggleAxesDiv;
@@ -83,6 +77,9 @@
 		var inOutButtonMaxInOutChange = 0.5;
 
 		var inOutButton, inOutButtonLoaded;
+
+		var chooseTrack0Button, chooseTrack1Button, chooseTrack2Button, chooseTrack3Button;
+		var chooseTrackButtonsActivated;
 
 		var visibleAxes, visibleAxesVisible;
 		var cannonAxes, cannonAxesVisible;
@@ -98,16 +95,7 @@
 
 		var world, timeStep = 1/60, caDebugOutliner;
 
-		var horizonGeometry, horizontMaterial, horizonMesh, horizonTexture;
-		var horizonMaterialArray = [];
-
 		var groundPlaneMesh, groundPlaneBody, groundPlaneGeometry, groundPlaneShape, groundPlaneMaterial;
-
-		var horizonDistance = 10000;
-
-
-		var wallHalfHeight = trackWidth;
-		var wallHalfThickness = trackThickness;
 
 		var robotBody, robotMesh;
 
@@ -118,7 +106,7 @@
 		function makeTrackPathPoint( pointLocation ) {
 			var newPointLocation = new THREE.Vector3();
 			newPointLocation.copy( pointLocation );
-			var newVisiblePointMesh = new THREE.Mesh( new THREE.SphereGeometry( trackPathPointVisibleRadius ), new THREE.MeshLambertMaterial( { color: 0xff0000 } ) );
+			var newVisiblePointMesh = new THREE.Mesh( new THREE.SphereGeometry( rrTrackLayout[ 0 ].visibleTrackPathPointRadius ), new THREE.MeshLambertMaterial( { color: 0xff0000 } ) );
 			newVisiblePointMesh.position.copy( pointLocation );
 			scene.add( newVisiblePointMesh );
 			var newTrackPathPoint = {
@@ -135,6 +123,7 @@
 					scene.add( trackPathPoints[ i ].mesh );
 				}
 			}
+			trackPathPointsAreVisible = true;
 		}
 		function turnOffAllVisiblePoints() {
 			for( var i = 0; i < trackPathPoints.length; i++ ) {
@@ -143,6 +132,7 @@
 					scene.remove( trackPathPoints[ i ].mesh );
 				}
 			}
+			trackPathPointsAreVisible = false;
 		}
 		function turnOnVisibleTrackPathPoint( index ) {
 			if( !trackPathPoints[ index ].visible ) {
@@ -156,47 +146,13 @@
 				scene.remove( trackPathPoints[ index ].mesh );
 			}
 		}
-
-		function addTrackPathOrigin( location, direction ) {
-			trackPathCurrentPoint.copy( location );
-			makeTrackPathPoint( location );
-			trackPathCurrentDirection.copy( direction );
-		}
-		function addStraightTrackPathSection( sectionLength, sectionRise ) {
-			var incrementalLength = sectionLength / trackPathPointsPerSection;
-			var incrementalRise = sectionRise / trackPathPointsPerSection;
-			trackPathCurrentDisplacement.copy( trackPathCurrentDirection );
-			trackPathCurrentDisplacement.normalize().multiplyScalar( incrementalLength );
-			trackPathCurrentDisplacement.y += incrementalRise;
-			for( var i = 0; i < trackPathPointsPerSection; i++ ) {
-				trackPathNextPoint.addVectors( trackPathCurrentPoint, trackPathCurrentDisplacement );
-				makeTrackPathPoint( trackPathNextPoint );
-				trackPathCurrentPoint.copy( trackPathNextPoint );
+		function makeTrackPointsFromTrackPieces() {
+			// Empty the array
+			trackPathPoints.length = 0;
+			// for( var currentPieceIndex = 0; currentPieceIndex < rrTrackPieces.length; currentPieceIndex++ ) {
+			for( var currentPieceIndex = 0; currentPieceIndex < rrTrackPieces.length; currentPieceIndex++ ) {
+				makeTrackPathPoint( rrTrackPieces[ currentPieceIndex ].piecePathStartPoint );
 			}
-		}
-		function addCurveTrackPathSection( sectionRadius, sectionAngle, sectionRise ) {
-			var incrementalRise = sectionRise / trackPathPointsPerSection;
-			var incrementalAngle = sectionAngle / trackPathPointsPerSection;
-			var incrementalDistance = sectionRadius * Math.sin( ( incrementalAngle / 2 ) ) * 2;
-			for( var i = 0; i < trackPathPointsPerSection; i++ ) {
-				trackPathNextDirection.copy( trackPathCurrentDirection );
-				trackPathNextDirection.normalize();
-				if( i == 0 ) {
-					// the first incremental direction change is only half the angle of the remaining increments
-					trackPathNextDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), ( incrementalAngle / 2 ) );
-				} else {
-					trackPathNextDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), incrementalAngle );
-				}
-				trackPathCurrentDisplacement.copy( trackPathNextDirection );
-				trackPathCurrentDisplacement.multiplyScalar( incrementalDistance );
-				trackPathCurrentDisplacement.y += incrementalRise;
-				trackPathNextPoint.addVectors( trackPathCurrentPoint, trackPathCurrentDisplacement );
-				makeTrackPathPoint( trackPathNextPoint );
-				trackPathCurrentDirection.copy( trackPathNextDirection );
-				trackPathCurrentPoint.copy( trackPathNextPoint );
-			}
-			// now, after all the increments have been processed, add the remaining half-angle to finish the "current direction" being handed off to the next section
-			trackPathCurrentDirection.applyAxisAngle( new THREE.Vector3( 0, 1, 0 ), ( incrementalAngle / 2 ) );
 		}
 
 		function init() {
@@ -206,43 +162,6 @@
 			world = new CANNON.World();
 			world.gravity.set( 0, -9.8, 0 );
 			world.broadphase = new CANNON.NaiveBroadphase();
-
-			// currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
-			currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
-			currentTrackPathPointBody.addShape( new CANNON.Sphere( trackPathPointPhysicalRadius ) );
-			world.addBody( currentTrackPathPointBody );
-			// Make the array of point-locating-vectors that define the path of the track
-			// The track is an oval with straight sides of length 1,000 and curves with inner radius of 500
-			// The oval is centered at 0, 0, 0 with Y = 0 being at the elevation of the track driving surface
-			// The width of the track is 200
-			// +X is increasing to the right, +Y is increasing in the up direction and +Z is increasing in the "closer" direction
-			// - We're defining the track path as the centerline of the driving surface going around the oval, so:
-			// - - an origin at -500, 0, 600
-			// - - one straight section from 0, 0, 0 heading in the +X direction for a distance of 1,000
-			// - - one curve with a radius of 600 and an angular extent of 180 degrees (i.e. PI) (+ve angular extent is a curve heading "counter-clockwise" seen from above
-			// - - a second straight section heading in the -X direction for a distance of 1,000
-			// - - a second curve with the same radius and angular extent to bring us back to the origin
-			// - - the entire oval track is level and on the ground
-			// = = = redefining the track as a path:
-			var trackPathOriginPoint = new THREE.Vector3( -500, 0, 600 );
-			var trackPathStartingDirection = new THREE.Vector3( 1, 0, 0 );
-			var sectionOneLength = 1000, sectionOneRise = 0;
-			var sectionTwoRadius = 600, sectionTwoAngle = Math.PI, sectionTwoRise = 0;
-			var sectionThreeLength = 1000, sectionThreeRise = 0;
-			var sectionFourRadius = 600, sectionFourAngle = Math.PI, sectionFourRise = 0;
-			// ... the origin point
-			addTrackPathOrigin( trackPathOriginPoint, trackPathStartingDirection );
-			// ... the first straight section
-			addStraightTrackPathSection( sectionOneLength, sectionOneRise );
-			// ... the first curve
-			addCurveTrackPathSection( sectionTwoRadius, sectionTwoAngle, sectionTwoRise );
-			// ... the second straight section
-			addStraightTrackPathSection( sectionThreeLength, sectionThreeRise );
-			// ... the second curve
-			addCurveTrackPathSection( sectionFourRadius, sectionFourAngle, sectionFourRise );
-
-			turnOffAllVisiblePoints();
-			currentTrackPathPoint = 0;
 
 			pointOfViewPanelDiv = document.createElement( "div" );
 			pointOfViewPanelDiv.style.cssText = "position:absolute;display:none";
@@ -388,7 +307,7 @@
 			pointOfViewClosePanelButton.addEventListener( "click", onPointOfViewClosePanelClick );
 			document.body.appendChild( pointOfViewClosePanelButton );
 
-			pointOfViewButton = new imageButton( "image/pointOfViewButton.png", "rendererDomElement", 0.01, 0.01, 0.05, 0.05, " ", false, onPointOfViewButtonClick );
+			pointOfViewButton = new imageButton( "image/pointOfViewButton.png", 0.01, 0.01, 0.05, 0.05, " ", false, onPointOfViewButtonClick );
 			pointOfViewButtonLoaded = false;
 
 			shovelPanelDiv = document.createElement( "div" );
@@ -441,10 +360,28 @@
 			shovelToggleCannonDiv.addEventListener( "click", onShovelToggleCannonClick );
 			document.body.appendChild( shovelToggleCannonDiv );
 
+			shovelToggleVisibleTrackPathPointsDiv = document.createElement( "div" );
+			shovelToggleVisibleTrackPathPointsDiv.style.cssText = "position:absolute;text-align:center;display:none";
+			shovelToggleVisibleTrackPathPointsDiv.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin ) | 0 ) + "px";
+			shovelToggleVisibleTrackPathPointsDiv.style.top = "0" + ( ( panelVerticalMargin + ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleVisibleTrackPathPointsDiv.style.width = "0" + ( ( panelWidth - ( 2 * panelBarHorizontalMargin ) ) | 0 ) + "px";
+			shovelToggleVisibleTrackPathPointsDiv.style.height = "0" + ( ( panelBarHeight - panelBarVerticalMargin ) | 0 ) + "px";
+			shovelToggleVisibleTrackPathPointsDiv.style.color = panelSelectTextColor;
+			shovelToggleVisibleTrackPathPointsDiv.style.fontSize = panelSelectFontSize;
+			shovelToggleVisibleTrackPathPointsDiv.style.backgroundColor = panelSelectBackgroundColor;
+			shovelToggleVisibleTrackPathPointsDiv.style.opacity = panelSelectOpacity;
+			shovelToggleVisibleTrackPathPointsDiv.style.borderStyle = panelSelectBorderStyle;
+			shovelToggleVisibleTrackPathPointsDiv.style.borderWidth = "0" + ( panelSelectBorderWidth | 0 ) + "px";
+			shovelToggleVisibleTrackPathPointsDiv.style.borderColor = panelSelectBorderColor;
+			shovelToggleVisibleTrackPathPointsDiv.style.borderRadius = panelSelectBorderRadius;
+			shovelToggleVisibleTrackPathPointsDiv.innerHTML = "Toggle track path point visibility";
+			shovelToggleVisibleTrackPathPointsDiv.addEventListener( "click", onShovelToggleVisibleTrackPathPointsClick );
+			document.body.appendChild( shovelToggleVisibleTrackPathPointsDiv );
+
 			shovelClosePanelButton = document.createElement( "div" );
 			shovelClosePanelButton.style.cssText = "position:absolute;text-align:center;display:none";
 			shovelClosePanelButton.style.left = "0" + ( ( panelHorizontalMargin + panelBarHorizontalMargin + ( 2 * panelBarWidth / 3 ) ) | 0 ) + "px";
-			shovelClosePanelButton.style.top = "0" + ( ( panelVerticalMargin + ( 2 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
+			shovelClosePanelButton.style.top = "0" + ( ( panelVerticalMargin + ( 3 * ( panelBarHeight + panelBarVerticalMargin ) ) + panelBarVerticalMargin ) | 0 ) + "px";
 			shovelClosePanelButton.style.width = "0" + panelCloseButtonWidth + "px";
 			shovelClosePanelButton.style.height = "0" + panelCloseButtonHeight + "px";
 			shovelClosePanelButton.style.color = panelSelectTextColor;
@@ -459,163 +396,77 @@
 			shovelClosePanelButton.addEventListener( "click", onShovelClosePanelClick );
 			document.body.appendChild( shovelClosePanelButton );
 
-			shovelButton = new imageButton( "image/shovelButton.png", "rendererDomElement", 0.51, 0.01, 0.05, 0.05, " ", false, onShovelButtonClick );
+			shovelButton = new imageButton( "image/shovelButton.png", 0.51, 0.01, 0.05, 0.05, " ", false, onShovelButtonClick );
 			shovelButtonLoaded = false;
 
-			restartAnimationButton = new imageButton( "image/restartAnimationArrow.png", "rendererDomElement", 0.94, 0.01, 0.05, 0.05, " ", false, restartAnimation );
+			restartAnimationButton = new imageButton( "image/restartAnimationArrow.png", 0.94, 0.01, 0.05, 0.05, " ", false, restartAnimation );
 			restartAnimationButtonLoaded = false;
-			// restartAnimationButton.visible.style.zIndex = 10;
 
-			upDownLeftRightButton = new imageButton( "image/upDownLeftRightArrows.png", "rendererDomElement", 0.01, 0.85, 0.1, 0.14, " ", true, upDownLeftRightButtonHandler );
+			upDownLeftRightButton = new imageButton( "image/upDownLeftRightArrows.png", 0.01, 0.85, 0.1, 0.14, " ", true, upDownLeftRightButtonHandler );
 			upDownLeftRightButtonLoaded = false;
 
-			inOutButton = new imageButton( "image/inOutArrows.png", "rendererDomElement", 0.2, 0.85, 0.1, 0.14, " ", true, inOutButtonHandler );
+			inOutButton = new imageButton( "image/inOutArrows.png", 0.2, 0.85, 0.1, 0.14, " ", true, inOutButtonHandler );
 			inOutButtonLoaded = false;
 
-			camera = new THREE.PerspectiveCamera( 80, 1.3, 1, 20000 );
-			camera.position.set( 600, 300, 400 );
+			getTrackLayouts();
+			selectTrackLayout( 3 );
+
+			camera = new THREE.PerspectiveCamera( 80, 1.3, 1, rrTrackLayout[ 0 ].horizonDistance * 10 );
+			camera.position.copy( rrTrackLayout[ 1 ].location );
+			camera.position.z += 200;
 			renderer = new THREE.WebGLRenderer();
 			renderer.domElement.id = "rendererDomElement";
 			document.body.appendChild( renderer.domElement );
-			xLight = new THREE.DirectionalLight( 0xffcc88 );
+			xLight = new THREE.DirectionalLight( 0xffffff );
 			xLight.position.set( 1, 0, 0 ).normalize();
 			scene.add( xLight );
-			xMinusLight = new THREE.DirectionalLight( 0xff88cc );
+			xMinusLight = new THREE.DirectionalLight( 0xffffff );
 			xMinusLight.position.set( -1, 0, 0 ).normalize();
 			scene.add( xMinusLight );
 			yLight = new THREE.DirectionalLight( 0xffffff );
 			yLight.position.set( 0, 1, 0 ).normalize();
 			scene.add( yLight );
-			zLight = new THREE.DirectionalLight( 0xcc88ff );
+			yMinusLight = new THREE.DirectionalLight( 0xffffff );
+			yMinusLight.position.set( 0, -1, 0 ).normalize();
+			scene.add( yMinusLight );
+			zLight = new THREE.DirectionalLight( 0xffffff );
 			zLight.position.set( 0, 0, 1 ).normalize();
 			scene.add( zLight );
-			zMinusLight = new THREE.DirectionalLight( 0x88ccff );
+			zMinusLight = new THREE.DirectionalLight( 0xffffff );
 			zMinusLight.position.set( 0, 0, -1 ).normalize();
 			scene.add( zMinusLight );
+			// var ambientLight = new THREE.AmbientLight( 0x555555 );
+			// scene.add( ambientLight );
 
-			orbitControls = new THREE.OrbitControls( camera );
-			orbitControls.damping = 0.2;
-			orbitControls.maxDistance = horizonDistance;
-			// orbitControls.maxPolarAngle = Math.PI / 2;
-			orbitControls.addEventListener( 'change', render );
+			chooseTrack0Button = new textBox( "Choose<br>Track 1", .5, 0.94, 0.07, 0.04, "red", "1.5", "yellow", "2px", "blue" );
+			chooseTrack0Button.visible.addEventListener( "mousedown", onCchooseTrack0ButtonClick, false );
+			chooseTrack0Button.visible.addEventListener( "touchstart", onCchooseTrack0ButtonClick, false );
+			chooseTrack1Button = new textBox( "Choose<br>Track 2", .6, 0.94, 0.07, 0.04, "red", "1.5", "yellow", "2px", "blue" );
+			chooseTrack1Button.visible.addEventListener( "mousedown", onCchooseTrack1ButtonClick, false );
+			chooseTrack1Button.visible.addEventListener( "touchstart", onCchooseTrack1ButtonClick, false );
+			chooseTrack2Button = new textBox( "Choose<br>Track 3", .7, 0.94, 0.07, 0.04, "red", "1.5", "yellow", "2px", "blue" );
+			chooseTrack2Button.visible.addEventListener( "mousedown", onCchooseTrack2ButtonClick, false );
+			chooseTrack2Button.visible.addEventListener( "touchstart", onCchooseTrack2ButtonClick, false );
+			chooseTrack3Button = new textBox( "Choose<br>Track 4", .8, 0.94, 0.07, 0.04, "red", "1.5", "yellow", "2px", "blue" );
+			chooseTrack3Button.visible.addEventListener( "mousedown", onCchooseTrack3ButtonClick, false );
+			chooseTrack3Button.visible.addEventListener( "touchstart", onCchooseTrack3ButtonClick, false );
+			chooseTrackButtonsActivated = false;
+
+			// currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
+			currentTrackPathPointBody = new CANNON.Body( { material: new CANNON.Material(), mass: 0 } );
+			currentTrackPathPointBody.addShape( new CANNON.Sphere( trackPathPointPhysicalRadius ) );
+			world.addBody( currentTrackPathPointBody );
+			// Make the array of point-locating-vectors that define the physics path along the track
+			makeTrackPointsFromTrackPieces();
+			turnOffAllVisiblePoints();
+			currentTrackPathPoint = 0;
 
 			caDebugOutliner = new THREE.CannonDebugRenderer( scene, world );
 
-			// Horizon mesh
-			// ... the jpg images are "painted" on the OUTSIDE faces of the box so flip them right-left to view from the inside
-			// ... with the camera on the +Y side of 0, 0, 0 (with +X headingn off to the right) looking through 0, 0, 0 it's "seeing" the "south" wall (face 6 in the loading order)
-			// ...loading order for box faces is west, east, sky, ground, north, south
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeWestMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeEastMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { color:0x8888ff, side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/concrete.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeNorthMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterialArray.push( new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'image/homeSouthMirrored.jpg' ), side:THREE.DoubleSide } ) );
-			horizonMaterial = new THREE.MeshFaceMaterial( horizonMaterialArray );
-			// horizonGeometry = new THREE.BoxGeometry( 2 * horizonDistance, 2 * horizonDistance, 2 * horizonDistance );
-			horizonGeometry = new THREE.BoxGeometry( ( trackWestDistance + trackEastDistance ), trackSkyHeight, ( trackNorthDistance + trackSouthDistance ) );
-			horizonMesh = new THREE.Mesh( horizonGeometry, horizonMaterial );
-			horizonMesh.position.set( 0, ( ( trackSkyHeight / 2 ) - trackThickness ), 0 );
-			scene.add( horizonMesh );
-
-			// // Ground plane mesh
-			// groundPlaneGeometry = new THREE.PlaneBufferGeometry( 2.1 * horizonDistance, 2.1 * horizonDistance );
-			// groundPlaneMaterial = new THREE.MeshLambertMaterial( { color:0x883311 } );
-			// // groundPlaneMaterial = new THREE.MeshLambertMaterial( { map: THREE.ImageUtils.loadTexture( 'image/grass.jpg' ) } );
-			// groundPlaneMesh = new THREE.Mesh( groundPlaneGeometry, groundPlaneMaterial );
-			// groundPlaneMesh.rotation.set( - Math.PI / 2, 0, 0 );
-			// groundPlaneMesh.position.set( 0, -30, 0 );
-			// scene.add( groundPlaneMesh );
-
-			// Race track mesh
-			var stlLoader = new THREE.STLLoader();
-			stlLoader.load( "shape/rrTrack.stl", function( trackGeometry ) {
-				var trackMaterial = new THREE.MeshPhongMaterial( { color:0xf0c010 } );
-				var trackMesh = new THREE.Mesh( trackGeometry, trackMaterial );
-				trackMesh.rotation.set( -Math.PI / 2, 0, 0 );
-				scene.add( trackMesh );
-			} );
-			// Race track body
-			// - race track body bottom
-			var trackBodyMaterial = new CANNON.Material();
-			var trackBodyBottomHalfWidth = ( trackStraightStretchLength / 2 ) + trackInnerRadius + trackWidth;
-			var trackBottomShape = new CANNON.Box( new CANNON.Vec3( trackBodyBottomHalfWidth, wallHalfThickness, trackInnerRadius + trackWidth ) );
-			var trackBottomBody = new CANNON.Body( { material: trackBodyMaterial } );
-			trackBottomBody.addShape( trackBottomShape );
-			trackBottomBody.position.set( 0, -wallHalfThickness, 0 );
-			world.addBody( trackBottomBody );
-			// - race track body top
-			var trackTopBody = new CANNON.Body( { material: trackBodyMaterial } );
-			trackTopBody.addShape( trackBottomShape );
-			trackTopBody.position.set( 0, ( ( wallHalfHeight * 2 ) - wallHalfThickness ), 0 );
-			world.addBody( trackTopBody );
-			// - race track body curve inside walls
-			// - - make "n" + 1 vertical wall segments to "surround" the half-circle curve
-			// - - angle between each segment is pi/n and rotation of first one is 0 to mate with straight section wall
-			var curveWallCount = 32;
-			var trackCurveInsideShape = new CANNON.Box( new CANNON.Vec3( ( (trackInnerRadius * Math.tan( Math.PI / ( 2 * curveWallCount ) ) ) ), wallHalfHeight, wallHalfThickness ) );
-			var trackCurveInsideRadius = trackInnerRadius - wallHalfThickness;
-			for( var i = 0; i <= curveWallCount; i ++ ) {
-				// first the "east" curve
-				// var rotation = Math.PI / ( 2 * curveWallCount ) + i * ( Math.PI / curveWallCount );
-				var rotation = i * ( Math.PI / curveWallCount );
-				var xTranslation = trackCurveInsideRadius * Math.sin( rotation );
-				var zTranslation = trackCurveInsideRadius * Math.cos( rotation );
-				trackCurveInsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
-				trackCurveInsideBody1.addShape( trackCurveInsideShape );
-				trackCurveInsideBody1.position.set( ( trackEastCurveCenterX - xTranslation ), trackWidth, -zTranslation );
-				trackCurveInsideBody1.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.addBody( trackCurveInsideBody1 );
-				// then the "west" curve
-				trackCurveInsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
-				trackCurveInsideBody2.addShape( trackCurveInsideShape );
-				trackCurveInsideBody2.position.set( ( trackWestCurveCenterX + xTranslation ), trackWidth, zTranslation );
-				trackCurveInsideBody2.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.addBody( trackCurveInsideBody2 );
-			}
-			// - race track body straight inside walls
-			var trackStraightInsideShape = new CANNON.Box( new CANNON.Vec3( ( trackStraightStretchLength / 2 ), wallHalfHeight, wallHalfThickness ) );
-			var trackStraightInsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
-			trackStraightInsideBody1.addShape( trackStraightInsideShape );
-			trackStraightInsideBody1.position.set( 0, trackWidth, ( trackInnerRadius - wallHalfThickness ) );
-			world.addBody( trackStraightInsideBody1 );
-			var trackStraightInsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
-			trackStraightInsideBody2.addShape( trackStraightInsideShape );
-			trackStraightInsideBody2.position.set( 0, trackWidth, -( trackInnerRadius - wallHalfThickness ) );
-			world.addBody( trackStraightInsideBody2 );
-			// - race track body straight outside walls
-			var trackStraightOutsideShape = new CANNON.Box( new CANNON.Vec3( ( trackStraightStretchLength / 2 ), wallHalfHeight, wallHalfThickness ) );
-			var trackStraightOutsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
-			trackStraightOutsideBody1.addShape( trackStraightOutsideShape );
-			trackStraightOutsideBody1.position.set( 0, trackWidth, ( trackInnerRadius + trackWidth + wallHalfThickness ) );
-			world.addBody( trackStraightOutsideBody1 );
-			var trackStraightOutsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
-			trackStraightOutsideBody2.addShape( trackStraightOutsideShape );
-			trackStraightOutsideBody2.position.set( 0, trackWidth, -( trackInnerRadius + trackWidth + wallHalfThickness ) );
-			world.addBody( trackStraightOutsideBody2 );
-			// - race track body curve outside walls
-			// - - make "n" + 1 vertical wall segments to "surround" the half-circle curve
-			// - - angle between each segment is pi/n and rotation of first one is 0 to mate with straight section wall
-			var trackCurveOutsideShape = new CANNON.Box( new CANNON.Vec3( ( (trackInnerRadius + trackWidth ) * Math.tan( Math.PI / ( 2 * curveWallCount ) ) ), wallHalfHeight, wallHalfThickness ) );
-			var trackCurveOutsideRadius = trackInnerRadius + trackWidth + wallHalfThickness;
-			for( var i = 0; i <= curveWallCount; i ++ ) {
-				// first the "east" curve
-				// var rotation = Math.PI / ( 2 * curveWallCount ) + i * ( Math.PI / curveWallCount );
-				var rotation = i * ( Math.PI / curveWallCount );
-				var xTranslation = trackCurveOutsideRadius * Math.sin( rotation );
-				var zTranslation = trackCurveOutsideRadius * Math.cos( rotation );
-				trackCurveOutsideBody1 = new CANNON.Body( { material: trackBodyMaterial } );
-				trackCurveOutsideBody1.addShape( trackCurveOutsideShape );
-				trackCurveOutsideBody1.position.set( ( trackEastCurveCenterX - xTranslation ), trackWidth, -zTranslation );
-				trackCurveOutsideBody1.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.addBody( trackCurveOutsideBody1 );
-				// then the "west" curve
-				trackCurveOutsideBody2 = new CANNON.Body( { material: trackBodyMaterial } );
-				trackCurveOutsideBody2.addShape( trackCurveOutsideShape );
-				trackCurveOutsideBody2.position.set( ( trackWestCurveCenterX + xTranslation ), trackWidth, zTranslation );
-				trackCurveOutsideBody2.quaternion.setFromAxisAngle( new CANNON.Vec3( 0, 1, 0 ), rotation );
-				world.addBody( trackCurveOutsideBody2 );
-			}
+			orbitControls = new THREE.OrbitControls( camera );
+			orbitControls.damping = 0.2;
+			orbitControls.maxDistance = ( horizonDistance * 3 );
+			orbitControls.addEventListener( 'change', render );
 
 			visibleAxes = new THREE.AxisHelper( 300 );
 			visibleAxesVisible = false;
@@ -624,19 +475,19 @@
 			visibleCameraVector = new VisibleVector( camera.getWorldDirection(), camera.position, 500, 1.0, 0.5, 1.0 );
 			scene.add( visibleCameraVector );
 
-			robotMesh = new THREE.Mesh( new THREE.SphereGeometry( trackWidth / 3 ), new THREE.MeshLambertMaterial( { color: 0x6789ab } ) );
+			robotMesh = new THREE.Mesh( new THREE.SphereGeometry( rrTrackLayout[ 0 ].trackWidth / 3 ), new THREE.MeshLambertMaterial( { color: 0x6789ab } ) );
 			scene.add( robotMesh );
 			var robotBodyMaterial = new CANNON.Material();
 			robotBody = new CANNON.Body( { material: robotBodyMaterial, mass: 100, linearDamping: 0.9, angularDamping: 0 } );
-			robotBody.addShape( new CANNON.Sphere( trackWidth / 3 ) );
+			robotBody.addShape( new CANNON.Sphere( rrTrackLayout[ 0 ].trackWidth / 3 ) );
 			world.addBody( robotBody );
 
 			var mainSpring = new CANNON.Spring( currentTrackPathPointBody, robotBody, {
 				localAnchorA: new CANNON.Vec3( 0, 0, 0 ),
 				localAnchorB: new CANNON.Vec3( 0, 0, 0 ),
 				restLength: 0,
-				stiffness: 1000,
-				damping: 10
+				stiffness: 2000,
+				damping: 1
 			} );
 			world.addEventListener( "postStep", function( event ) {
 				mainSpring.applyForce();
@@ -646,6 +497,11 @@
 
 			restartAnimation();
 
+
+			camera.position.copy( rrTrackLayout[ 1 ].location );
+			camera.position.z += 50;
+
+
 			// document.addEventListener( "keydown", checkKeyDown );
 			window.addEventListener( "resize", onWindowResize, false );
 			window.addEventListener( "orientationchange", onWindowResize, false );
@@ -653,11 +509,11 @@
 			stats = new Stats();
 			stats.domElement.style.position = "absolute";
 			stats.domElement.style.top = "0px";
-			stats.domElement.style.right = "30%";
+			stats.domElement.style.right = "20%";
 			document.body.appendChild( stats.domElement );
 
-			// setCameraPositioningMode( "Arrows" );
-			setCameraPositioningMode( "Follow" );
+			setCameraPositioningMode( "Arrows" );
+			// setCameraPositioningMode( "Follow" );
 			// setCameraPositioningMode( "Robot" );
 			// setCameraPositioningMode( "Orbit" );
 			// setCameraPositioningMode( "Track" );
@@ -970,6 +826,7 @@
 			shovelPanelDiv.style.display = "block";
 			shovelToggleCannonDiv.style.display = "block";
 			shovelToggleAxesDiv.style.display = "block";
+			shovelToggleVisibleTrackPathPointsDiv.style.display = "block";
 			shovelClosePanelButton.style.display = "block";
 			shovelButton.deactivate();
 			pointOfViewButton.deactivate();
@@ -980,6 +837,7 @@
 			shovelPanelDiv.style.display = "none";
 			shovelToggleCannonDiv.style.display = "none";
 			shovelToggleAxesDiv.style.display = "none";
+			shovelToggleVisibleTrackPathPointsDiv.style.display = "none";
 			shovelClosePanelButton.style.display = "none";
 			shovelButton.activate();
 			pointOfViewButton.activate();
@@ -988,6 +846,13 @@
 		}
 		function onShovelToggleCannonClick( event ) {
 			outlineBodies = !outlineBodies;
+		}
+		function onShovelToggleVisibleTrackPathPointsClick( event ) {
+			if( trackPathPointsAreVisible ) {
+				turnOffAllVisiblePoints();
+			} else {
+				turnOnAllVisiblePoints();
+			}
 		}
 		function onShovelToggleAxesClick( event ) {
 			if( visibleAxesVisible ) {
@@ -1010,6 +875,38 @@
 		}
 
 		function inOutButtonHandler( event ) {
+		}
+
+		function onCchooseTrack0ButtonClick( event ) {
+			selectTrackLayout( 0 );
+			turnOffAllVisiblePoints();
+			makeTrackPointsFromTrackPieces();
+			turnOffAllVisiblePoints();
+			restartAnimation();
+		}
+
+		function onCchooseTrack1ButtonClick( event ) {
+			selectTrackLayout( 1 );
+			turnOffAllVisiblePoints();
+			makeTrackPointsFromTrackPieces();
+			turnOffAllVisiblePoints();
+			restartAnimation();
+		}
+
+		function onCchooseTrack2ButtonClick( event ) {
+			selectTrackLayout( 2 );
+			turnOffAllVisiblePoints();
+			makeTrackPointsFromTrackPieces();
+			turnOffAllVisiblePoints();
+			restartAnimation();
+		}
+
+		function onCchooseTrack3ButtonClick( event ) {
+			selectTrackLayout( 3 );
+			turnOffAllVisiblePoints();
+			makeTrackPointsFromTrackPieces();
+			turnOffAllVisiblePoints();
+			restartAnimation();
 		}
 
 		function pointOnRobotVelocityVector( distanceFromRobot ) {
@@ -1036,7 +933,7 @@
 			// robotBody.velocity = new CANNON.Vec3( 2000, 0, 0 );
 			// robotBody.position.set( 0, 100, trackInnerRadius + ( trackWidth / 2 ) );
 			robotBody.position.copy( trackPathPoints[ 0 ].location );
-			robotBody.position.y = ( trackWidth / 3 );
+			robotBody.position.y += rrTrackLayout[ 0 ].trackWidth / 3;
 			currentTrackPathPoint = 0;
 		}
 
@@ -1095,10 +992,19 @@
 				timeToAnimate = true;
 			}
 			if( ( frameCount % 3 ) == 0 ) {
-				turnOffVisibleTrackPathPoint( currentTrackPathPoint );
-				currentTrackPathPoint++;
-				if( currentTrackPathPoint >= trackPathPoints.length ) { currentTrackPathPoint = 0; }
-				turnOnVisibleTrackPathPoint( currentTrackPathPoint );
+				if( trackPathPointsAreVisible ) {
+					// If the track path points are all visible, turn off the current one to make it noticable
+					turnOnVisibleTrackPathPoint( currentTrackPathPoint );
+					currentTrackPathPoint++;
+					if( currentTrackPathPoint >= trackPathPoints.length ) { currentTrackPathPoint = 0; }
+					turnOffVisibleTrackPathPoint( currentTrackPathPoint );
+				} else {
+					// If the track path points are all NOT visible, turn on the current one to make it noticable
+					turnOffVisibleTrackPathPoint( currentTrackPathPoint );
+					currentTrackPathPoint++;
+					if( currentTrackPathPoint >= trackPathPoints.length ) { currentTrackPathPoint = 0; }
+					turnOnVisibleTrackPathPoint( currentTrackPathPoint );
+				}
 			}
 			if( timeToAnimate ) {
 				buttonPoller();
@@ -1120,6 +1026,8 @@
 						// Add the robot's position this displacement vector to get the camera's new position in world coordinates 
 						var newCameraPosition = new THREE.Vector3();
 						newCameraPosition.addVectors( robotMesh.position, cameraMoveVector );
+						// Don't let the camera go underground...
+						newCameraPosition.y = Math.max( 0, newCameraPosition.y );
 						// Update the camera position and "lookAt" parameter
 						camera.position.copy( newCameraPosition );
 						camera.lookAt( robotMesh.position );
@@ -1151,6 +1059,13 @@
 				else
 					caDebugOutliner.depopulate();
 				render();
+			}
+			if( !chooseTrackButtonsActivated ) {
+				chooseTrackButtonsActivated = true;
+				chooseTrack0Button.activate();
+				chooseTrack1Button.activate();
+				chooseTrack2Button.activate();
+				chooseTrack3Button.activate();
 			}
 		}
 	</script>

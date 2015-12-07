@@ -15,14 +15,13 @@
 // Text can be placed into the rectangle's "innerHTML".
 // The color of the text and the background can be set.
 // A border width and color can be set.
-function textBox( startingText, hostElementId, leftPercent, topPercent, widthPercent, heightPercent,
+function textBox( startingText, leftPercent, topPercent, widthPercent, heightPercent,
 					textcolor, textsize, backgroundcolor, borderwidth, bordercolor ) {
 	var inst = this;
 	// make a variable to allow the text box to become dormant
 	this.dormant = true;
 	// preserve the arguments
 	this.startingText = startingText;
-	this.hostId = hostElementId;
 	this.leftPercent = leftPercent;
 	this.topPercent = topPercent;
 	this.widthPercent = widthPercent;
@@ -42,25 +41,20 @@ function textBox( startingText, hostElementId, leftPercent, topPercent, widthPer
 	this.visible.innerHTML = this.startingText;
 	document.body.appendChild( this.visible );
 
-	// a routine to figure the geometry of this text box according to the geometry of the host element
-	this.resize = function( windowElementId, left, top, width, height ) {
-		// find the host element
-		var hostElement = document.getElementById( windowElementId );
-		// get the geometry of the host element
-		var hostLeft = hostElement.offsetLeft;
-		var hostTop = hostElement.offsetTop;
-		var hostWidth = hostElement.offsetWidth;
-		var hostHeight = hostElement.offsetHeight;
-		// set the text box geometry to the specified proportions
-		inst.visible.style.left = "0" + ( ( hostLeft + ( left * hostWidth ) ) | 0 ) + "px";
-		inst.visible.style.top = "0" + ( ( hostTop + ( top * hostHeight ) ) | 0 ) + "px";
-		inst.visible.style.width = "0" + ( ( width * hostWidth ) | 0 ) + "px";
-		inst.visible.style.height = "0" + ( ( height * hostHeight ) | 0 ) + "px";
+	// a routine to figure the geometry of this text box
+	this.resize = function( leftPercent, topPercent, widthPercent, heightPercent ) {
+		// readjust the text box geometry
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
+		inst.visible.style.left = "0" + ( ( leftPercent * windowWidth ) | 0 ) + "px";
+		inst.visible.style.top = "0" + ( ( topPercent * windowHeight ) | 0 ) + "px";
+		inst.visible.style.width = "0" + ( ( widthPercent * windowWidth ) | 0 ) + "px";
+		inst.visible.style.height = "0" + ( ( heightPercent * windowHeight ) | 0 ) + "px";
 	}
 	// an event handler to call the resizing routine whenever there's a change in browser geometry
 	this.windowResizeHandler = function() {
 		if( inst.dormant ) return;
-		inst.resize( inst.hostId, inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
+		inst.resize( inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
 	}
 
 	// a routine to update the text in the text box
@@ -90,16 +84,15 @@ function textBox( startingText, hostElementId, leftPercent, topPercent, widthPer
 };
 
 // imageLabel places an image file into a named HTML element.
-// The image is placed at a location and size/shape determined by percentage proportions of the dimensions of the host element.
-// When the host element is resized, the image will distort as needed to retain the proportions.
-function imageLabel ( imageFileName, hostElementId, leftPercent, topPercent, widthPercent, heightPercent ) {
+// The image is placed at a location and size/shape determined by percentage proportions of the dimensions of the browser window.
+// When the window is resized, the image will distort as needed to retain the proportions.
+function imageLabel ( imageFileName, leftPercent, topPercent, widthPercent, heightPercent ) {
 	// make a persistent variable of this instance for later reference during event handling
 	var inst = this;
 	// make a variable allowing the label to become dormant
 	this.dormant = true;
 	// preserve the arguments
 	this.imageFileName = imageFileName;
-	this.hostId = hostElementId;
 	this.leftPercent = leftPercent;
 	this.topPercent = topPercent;
 	this.widthPercent = widthPercent;
@@ -113,25 +106,20 @@ function imageLabel ( imageFileName, hostElementId, leftPercent, topPercent, wid
 	this.visible.appendChild( this.image );
 	this.image.src = imageFileName;
 
-	// a routine to figure the geometry of this label according to the geometry of the label's host element
-	this.resize = function( windowElementId, left, top, width, height ) {
-		// find the label's host element
-		var hostElement = document.getElementById( windowElementId );
-		// get the geometry of the host element
-		var hostLeft = hostElement.offsetLeft;
-		var hostTop = hostElement.offsetTop;
-		var hostWidth = hostElement.offsetWidth;
-		var hostHeight = hostElement.offsetHeight;
-		// set the label's geometry (both container div and image) to the specified proportions
-		inst.image.style.left = inst.visible.style.left = "0" + ( ( hostLeft + ( left * hostWidth ) ) | 0 ) + "px";
-		inst.image.style.top = inst.visible.style.top = "0" + ( ( hostTop + ( top * hostHeight ) ) | 0 ) + "px";
-		inst.image.style.width = inst.visible.style.width = "0" + ( ( width * hostWidth ) | 0 ) + "px";
-		inst.image.style.height = inst.visible.style.height = "0" + ( ( height * hostHeight ) | 0 ) + "px";
+	// figure the geometry of this label
+	this.resize = function( leftPercent, topPercent, widthPercent, heightPercent ) {
+		// readjust the label's geometry
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
+		inst.image.style.left = inst.visible.style.left = "0" + ( ( leftPercent * windowWidth ) | 0 ) + "px";
+		inst.image.style.top = inst.visible.style.top = "0" + ( ( topPercent * windowHeight ) | 0 ) + "px";
+		inst.image.style.width = inst.visible.style.width = "0" + ( ( widthPercent * windowWidth ) | 0 ) + "px";
+		inst.image.style.height = inst.visible.style.height = "0" + ( ( heightP * windowHeight ) | 0 ) + "px";
 	}
 	// an event handler to call the resizing routine whenever there's a change in browser geometry
 	this.windowResizeHandler = function() {
 		if( inst.dormant ) return;
-		inst.resize( inst.hostId, inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
+		inst.resize( inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
 	}
 
 	// a routine to make the label visible and responsive
@@ -156,11 +144,11 @@ function imageLabel ( imageFileName, hostElementId, leftPercent, topPercent, wid
 
 // horizontalSlider creates a left-right slide control within a named HTML element.
 // The control is meant to visually resemble a slider-type level control on a typical sound board in appearance and use.
-// The control's track location and size are determined by percentage proportions of the host element.
+// The control's track location and size are determined by percentage proportions of the browser window.
 // The control's sliding "knob" is rendered from a graphic image file. The height of the slider is determined by a percentage of the
-//   height of the host element and the width of the slider is determined by maintaining the original aspect ratio of the graphic image.
+//   height of the browser window and the width of the slider is determined by maintaining the original aspect ratio of the graphic image.
 // An event handler routine is invoked whenever the slider position is changed.
-function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent, verticalCenterPercent, limitToLimitPercent, sliderHeightPercent, trackHeightPercent, trackColor, leftLimitValue, rightLimitValue, startingValue, changeHandler ) {
+function horizontalSlider( sliderImageFileName, leftLimitPercent, verticalCenterPercent, limitToLimitPercent, sliderHeightPercent, trackHeightPercent, trackColor, leftLimitValue, rightLimitValue, startingValue, changeHandler ) {
 	// make a persistent variable of this instance for later reference during event handling
 	var inst = this;
 	// make a variable allowing the label to become dormant
@@ -171,7 +159,6 @@ function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent,
 	this.leftLimitValue = leftLimitValue;
 	this.rightLimitValue = rightLimitValue;
 	this.currentValue = startingValue;
-	this.hostId = hostElementId;
 	this.sliderHeightPercent = sliderHeightPercent;
 	this.trackHeightPercent = trackHeightPercent;
 	this.leftLimitPercent = leftLimitPercent;
@@ -195,20 +182,15 @@ function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent,
 	this.imageElement.src = sliderImageFileName;
 	this.slider.appendChild( this.imageElement );
 
-	// a routine to figure the geometry of this control according to the geometry of the label's host element
-	this.resize = function( windowElementId, leftLimitPercent, verticalCenterPercent, limitToLimitPercent, sliderRadiusPercent, trackRadiusPercent ) {
-		// find the control's host element
-		var hostElement = document.getElementById( windowElementId ); 
-		// get the geometry of the host element
-		var hostLeft = hostElement.offsetLeft;
-		var hostTop = hostElement.offsetTop;
-		var hostWidth = hostElement.offsetWidth;
-		var hostHeight = hostElement.offsetHeight;
+	// a routine to figure the geometry of this control
+	this.resize = function( leftLimitPercent, verticalCenterPercent, limitToLimitPercent, sliderRadiusPercent, trackRadiusPercent ) {
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
 		// calculate the control's pixel geometry according to the specified proportions
-		var trackLeft = ( hostLeft + ( ( leftLimitPercent - ( trackHeightPercent / 2 ) ) * hostWidth ) ) | 0;
-		var trackTop = ( hostTop + ( ( verticalCenterPercent - ( trackHeightPercent / 2 ) ) * hostHeight ) ) | 0;
-		var trackWidth = ( ( limitToLimitPercent + trackHeightPercent ) * hostWidth ) | 0;
-		var trackHeight = ( trackHeightPercent * hostHeight ) | 0;
+		var trackLeft = ( ( leftLimitPercent - ( trackHeightPercent / 2 ) ) * windowWidth ) | 0;
+		var trackTop = ( ( verticalCenterPercent - ( trackHeightPercent / 2 ) ) * windowHeight ) | 0;
+		var trackWidth = ( ( limitToLimitPercent + trackHeightPercent ) * windowWidth ) | 0;
+		var trackHeight = ( trackHeightPercent * windowHeight ) | 0;
 		// calculate the slider image's natural aspect ratio
 		var imageAspectRatio = inst.imageElement.naturalWidth / inst.imageElement.naturalHeight;
 		// calculate the pixel positions of the end points of the slider's motion
@@ -217,11 +199,11 @@ function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent,
 		// calculate the slider range in terms of equivalent pixels
 		inst.motionPixelRange = inst.rightLimitPixel - inst.leftLimitPixel;
 		// calculate the proportional height of the slider image and the necessary width to retain the image's aspect ratio
-		var sliderHeight = ( sliderHeightPercent * hostHeight ) | 0;
+		var sliderHeight = ( sliderHeightPercent * windowHeight ) | 0;
 		var sliderWidth = ( sliderHeight * imageAspectRatio ) | 0;
 		// calculate the pixel location of the slider image according to present value
 		var sliderLeft = ( inst.leftLimitPixel + ( inst.motionPixelRange * ( inst.currentValue / ( inst.rightLimitValue - inst.leftLimitValue ) ) ) - ( sliderWidth / 2 ) ) | 0;
-		var sliderTop = ( hostTop + ( ( verticalCenterPercent - ( sliderHeightPercent / 2 ) ) * hostHeight ) ) | 0;
+		var sliderTop = ( ( verticalCenterPercent - ( sliderHeightPercent / 2 ) ) * windowHeight ) | 0;
 		// set the calculated geometry into the control's elements
 		inst.track.style.left = "0" + trackLeft + "px";
 		inst.track.style.top = "0" + trackTop + "px";
@@ -236,7 +218,7 @@ function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent,
 	// an event handler to call the resizing routine whenever there's a change in browser geometry
 	this.windowResizeHandler = function() {
 		if( inst.dormant ) return;
-		inst.resize( inst.hostId, inst.leftLimitPercent, inst.verticalCenterPercent, inst.limitToLimitPercent, inst.sliderHeightPercent, inst.trackHeightPercent );
+		inst.resize( inst.leftLimitPercent, inst.verticalCenterPercent, inst.limitToLimitPercent, inst.sliderHeightPercent, inst.trackHeightPercent );
 	}
 
 	// a routine to make the control visible and responsive
@@ -326,7 +308,7 @@ function horizontalSlider( sliderImageFileName, hostElementId, leftLimitPercent,
 }
 
 // Similar to horizontalSlider but oriented vertically
-function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPercent, topLimitPercent, sliderWidthPercent, trackWidthPercent, limitToLimitPercent, trackColor, bottomLimitValue, topLimitValue, startingValue, changeHandler ) {
+function verticalSlider( sliderImageFileName, horizontalCenterPercent, topLimitPercent, sliderWidthPercent, trackWidthPercent, limitToLimitPercent, trackColor, bottomLimitValue, topLimitValue, startingValue, changeHandler ) {
 	// make a persistent variable of this instance for later reference during event handling
 	var inst = this;
 	// make a variable allowing the label to become dormant
@@ -337,7 +319,6 @@ function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPer
 	this.bottomLimitValue = bottomLimitValue;
 	this.topLimitValue = topLimitValue;
 	this.currentValue = startingValue;
-	this.hostId = hostElementId;
 	this.sliderWidthPercent = sliderWidthPercent;
 	this.trackWidthPercent = trackWidthPercent;
 	this.topLimitPercent = topLimitPercent;
@@ -362,20 +343,15 @@ function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPer
 	this.imageElement.src = sliderImageFileName;
 	this.slider.appendChild( this.imageElement );
 
-	// a routine to figure the geometry of this control according to the geometry of the label's host element
-	this.resize = function( windowElementId, bottomLimitPercent, horizontalCenterPercent, limitToLimitPercent, sliderWidthPercent, trackWidthPercent ) {
-		// find the control's host element
-		var hostElement = document.getElementById( windowElementId ); 
-		// get the geometry of the host element
-		var hostLeft = hostElement.offsetLeft;
-		var hostTop = hostElement.offsetTop;
-		var hostWidth = hostElement.offsetWidth;
-		var hostHeight = hostElement.offsetHeight;
+	// a routine to figure the geometry of this control
+	this.resize = function( bottomLimitPercent, horizontalCenterPercent, limitToLimitPercent, sliderWidthPercent, trackWidthPercent ) {
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
 		// calculate the control's pixel geometry according to the specified proportions
-		var trackLeft = ( hostLeft + ( ( horizontalCenterPercent - ( trackWidthPercent / 2 ) ) * hostWidth ) ) | 0;
-		var trackTop = ( hostTop + ( ( topLimitPercent - ( trackWidthPercent / 2 ) ) * hostHeight ) ) | 0;
-		var trackWidth = ( trackWidthPercent * hostWidth ) | 0;
-		var trackHeight = ( ( limitToLimitPercent + trackWidthPercent ) * hostHeight ) | 0;
+		var trackLeft = ( ( horizontalCenterPercent - ( trackWidthPercent / 2 ) ) * windowWidth ) | 0;
+		var trackTop = ( ( topLimitPercent - ( trackWidthPercent / 2 ) ) * windowHeight ) | 0;
+		var trackWidth = ( trackWidthPercent * windowWidth ) | 0;
+		var trackHeight = ( ( limitToLimitPercent + trackWidthPercent ) * windowHeight ) | 0;
 		// calculate the slider image's natural aspect ratio
 		var imageAspectRatio = inst.imageElement.naturalWidth / inst.imageElement.naturalHeight;
 		// calculate the pixel positions of the end points of the slider's motion
@@ -384,10 +360,10 @@ function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPer
 		// calculate the slider range in terms of equivalent pixels
 		inst.motionPixelRange = inst.bottomLimitPixel - inst.topLimitPixel;
 		// calculate the proportional width of the slider image and the necessary height to retain the image's aspect ratio
-		var sliderWidth = ( sliderWidthPercent * hostWidth ) | 0;
+		var sliderWidth = ( sliderWidthPercent * windowWidth ) | 0;
 		var sliderHeight = ( sliderWidth / imageAspectRatio ) | 0;
 		// calculate the pixel location of the slider image according to present value
-		var sliderLeft = ( hostLeft + ( ( horizontalCenterPercent - ( sliderWidthPercent / 2 ) ) * hostWidth ) ) | 0;
+		var sliderLeft = ( ( horizontalCenterPercent - ( sliderWidthPercent / 2 ) ) * windowWidth ) | 0;
 		var sliderTop = ( inst.bottomLimitPixel - ( inst.motionPixelRange * ( inst.currentValue / ( inst.topLimitValue - inst.bottomLimitValue ) ) ) - ( sliderHeight / 2 ) ) | 0;
 		// set the calculated geometry into the control's elements
 		inst.track.style.left = "0" + trackLeft + "px";
@@ -403,7 +379,7 @@ function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPer
 	// an event handler to call the resizing routine whenever there's a change in browser geometry
 	this.windowResizeHandler = function() {
 		if( inst.dormant ) return;
-		inst.resize( inst.hostId, inst.bottomLimitPercent, inst.horizontalCenterPercent, inst.limitToLimitPercent, inst.sliderWidthPercent, inst.trackWidthPercent );
+		inst.resize( inst.bottomLimitPercent, inst.horizontalCenterPercent, inst.limitToLimitPercent, inst.sliderWidthPercent, inst.trackWidthPercent );
 	}
 
 	// a routine to make the control visible and responsive
@@ -503,19 +479,18 @@ function verticalSlider( sliderImageFileName, hostElementId, horizontalCenterPer
 // The image can be clicked/touched to invoke an event handler routine.
 // The "preserveAspect" argument can be supplied as "W", "H" or anything else and indicates that during resizing, the image's
 //  original aspect ratio is to be preserved with size tracking:
-//   - the width of the host element ("W")
-//   - the height of the host element ("H")
+//   - the width of the browser window ("W")
+//   - the height of the browser window ("H")
 //   - neither of the above and simply stretch along with any resizing
 // Internal variable "buttonDown" can be polled to see if the button is presently being held down
 // Internal variables "touchPointX" and "touchPointY" can be polled to see where the touch is currently hitting the button ( 0.0 = left/top, 100.0 = right/bottom)
-function imageButton( imageFileName, hostElementId, leftPercent, topPercent, widthPercent, heightPercent, preserveAspect, allowSlidingOn, clickHandler ) {
+function imageButton( imageFileName, leftPercent, topPercent, widthPercent, heightPercent, preserveAspect, allowSlidingOn, clickHandler ) {
 	// make a persistent variable of this instance for later reference during event handling
 	var inst = this;
 	// make a variable allowing the label to become dormant
 	this.dormant = true;
 	// preserve the arguments
 	this.imageFileName = imageFileName;
-	this.hostId = hostElementId;
 	this.leftPercent = leftPercent;
 	this.topPercent = topPercent;
 	this.widthPercent = widthPercent;
@@ -535,38 +510,33 @@ function imageButton( imageFileName, hostElementId, leftPercent, topPercent, wid
 	this.buttonDown = false;
 	this.touchPointX = 0;
 	this.touchPointY = 0;
-	this.resize = function( windowElementId, left, top, width, height ) {
-		// find the button's host element
-		var hostElement = document.getElementById( windowElementId ); 
-		// get the geometry of the host element
-		var hostLeft = hostElement.offsetLeft;
-		var hostTop = hostElement.offsetTop;
-		var hostWidth = hostElement.offsetWidth;
-		var hostHeight = hostElement.offsetHeight;
+	this.resize = function( leftPercent, topPercent, widthPercent, heightPercent ) {
+		var windowWidth = window.innerWidth;
+		var windowHeight = window.innerHeight;
 		// calculate the button image's natural aspect ratio
 		var imageAspectRatio = inst.imageElement.naturalWidth / inst.imageElement.naturalHeight;
-		// set the button's location geometry (both container div and image) to the specified proportions
-		inst.leftPixel = ( ( hostLeft + ( left * hostWidth ) ) | 0 );
-		inst.topPixel = ( ( hostTop + ( top * hostHeight ) ) | 0 );
+		// set the button's location geometry
+		inst.leftPixel = ( ( leftPercent * windowWidth ) | 0 );
+		inst.topPixel = ( ( topPercent * windowHeight ) | 0 );
 		inst.imageElement.style.left = inst.visible.style.left = "0" + inst.leftPixel + "px";
 		inst.imageElement.style.top = inst.visible.style.top = "0" + inst.topPixel + "px";
-		// calculate the button's size geometry according to the specified proportions
-		var rulingWidth = width * hostWidth;
-		var rulingHeight = height * hostHeight;
+		// calculate the button's size geometry
+		var rulingWidth = widthPercent * windowWidth;
+		var rulingHeight = heightPercent * windowHeight;
 		// set the button's size geometry
 		switch( inst.preserveAspect ) {
 			case "W":
-				// set the button's size according to the width of the host element and maintain the image's original aspect ratio
+				// set the button's size according to the width of the browser window and maintain the image's original aspect ratio
 				inst.widthPixel = ( ( rulingWidth ) | 0 );
 				inst.heightPixel = ( ( rulingWidth / imageAspectRatio ) | 0 );
 				break;
 			case "H":
-				// set the button's size according to the height of the host element and maintain the image's original aspect ratio
+				// set the button's size according to the height of the browser window and maintain the image's original aspect ratio
 				inst.widthPixel = ( ( rulingHeight * imageAspectRatio ) | 0 );
 				inst.heightPixel = ( ( rulingHeight ) | 0 );
 				break;
 			default:
-				// set the button's size according to the geometry of the host element and ignore the original image's aspect ratio
+				// set the button's size according to the geometry of the browser window and ignore the original image's aspect ratio
 				inst.widthPixel = ( ( rulingWidth ) | 0 );
 				inst.heightPixel = ( ( rulingHeight ) | 0 );
 				break;
@@ -577,7 +547,7 @@ function imageButton( imageFileName, hostElementId, leftPercent, topPercent, wid
 	// an event handler to call the resizing routine whenever there's a change in browser geometry
 	this.windowResizeHandler = function() {
 		if( inst.dormant ) return;
-		inst.resize( inst.hostId, inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
+		inst.resize( inst.leftPercent, inst.topPercent, inst.widthPercent, inst.heightPercent );
 	}
 
 	// a routine to make the button visible and responsive

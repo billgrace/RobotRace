@@ -38,3 +38,10 @@ Need to refine those routines into overall code to accept a list of track segmen
 Then need to make a page which will facilitate creation of a list of track segments and show a preview of the resulting track.
 
 Then need to implement database functions to save, edit and delete tracks. It would be nice if each track design had both a name AND a graphic snapshot.
+
+### Version 3
+OK, there's now a mostly stable set of things with four fixed track layouts and a simple blue ball being dragged along by a red "anchor" being animated along the layout's track path points.
+Finally got the rendering and physics engines happy about vertices and faces by learning that neither one of them likes global coordinates for vertices - rather the vertex coordinates are relative to a center of each object and then the mesh and body "position" parameters are set to locate that center where it should be. Getting this fixed got rid of lots of complaints from Cannon.js about the face normals apparently pointing into the shapes...
+
+Now we need to add a way for users to make their own track layouts. This will involve an additional screen (at least one), a way to choose colors and perhaps a way to upload image files and store and retrieve things to/from a server-side database.
+

@@ -17,6 +17,7 @@
 <script type="text/javascript" src="script/OrbitControls.js"></script>
 <script type="text/javascript" src="script/cannon.min.js"></script>
 <script type="text/javascript" src="script/CannonDebugRenderer.js"></script>
+<script type="text/javascript" src="script/rrTrack.js"></script>
 <script type="text/javascript">
 	var scene, camera, renderer, xLight, xMinusLight, yLight, yMinusLight, zLight, zMinusLight, orbitControls;
 	var world, timeStep = 1/60, caDebugOutliner;
@@ -25,6 +26,7 @@
 	var trackBodyList = [];
 	init();
 	function init() {
+		getTrackLayout();
 		scene = new THREE.Scene();
 		world = new CANNON.World();
 		world.gravity.set( 0, -9.8, 0 );
